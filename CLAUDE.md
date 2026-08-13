@@ -2,6 +2,8 @@
 
 ## Repository state
 
+The skill is implemented. The repository root *is* the skill folder: `SKILL.md`, `scripts/` (`timesheet.py` + `lib/`), `references/`, `assets/`; `tests/` and `tools/` stay out of the package. `scripts/package_skill.py --output-dir dist` builds the release ZIP (`employee-timesheet/` at the ZIP root), which is attached to a GitHub Release by hand.
+
 This repository is governed by Flow Next. The approved specification is the source of truth. Do not implement product code during specification, planning, or review stages.
 
 ## Product boundaries
