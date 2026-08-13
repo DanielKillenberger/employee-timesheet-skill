@@ -17,11 +17,22 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from .errors import TimesheetError
+
+try:  # POSIX
+    import fcntl
+except ImportError:  # pragma: no cover - Windows
+    fcntl = None  # type: ignore[assignment]
+
+try:  # Windows
+    import msvcrt
+except ImportError:  # pragma: no cover - POSIX
+    msvcrt = None  # type: ignore[assignment]
 
 ENV_VAR = "TIMESHEET_DATA_DIR"
 DEFAULT_DATA_DIR = Path("~/.employee-timesheet")
@@ -45,6 +56,10 @@ class DataDir:
     @property
     def registry_path(self) -> Path:
         return self.child("employees.json")
+
+    @property
+    def lock_path(self) -> Path:
+        return self.child(".registry.lock")
 
 
 def _ephemeral_roots() -> list[Path]:
@@ -114,23 +129,39 @@ def resolve_data_dir(
         )
 
     if create:
-        _mkdir_owner_only(path)
+        ensure_private_dir(path)
 
     return DataDir(path=path, source=source, warnings=warnings)
 
 
-def _mkdir_owner_only(path: Path) -> None:
-    try:
-        path.mkdir(parents=True, exist_ok=True)
-        os.chmod(path, DIR_MODE)
-    except NotImplementedError:  # pragma: no cover - platforms without chmod
-        pass
-    except OSError as exc:
-        raise TimesheetError(
-            "data_dir_unwritable",
-            f"The data folder '{path}' could not be created: {exc.strerror or exc}.",
-            {"data_dir": str(path)},
-        ) from exc
+def ensure_private_dir(path: Path) -> None:
+    """Create ``path`` (and missing parents) owner-only.
+
+    Only directories this function actually creates get their permissions set —
+    an existing directory is never chmod-ed, so nothing outside our own data
+    folder has its access narrowed.
+    """
+    if path.exists():
+        return
+    missing: list[Path] = []
+    probe = path
+    while not probe.exists() and probe != probe.parent:
+        missing.append(probe)
+        probe = probe.parent
+    for directory in reversed(missing):
+        try:
+            directory.mkdir(mode=DIR_MODE)
+            os.chmod(directory, DIR_MODE)
+        except FileExistsError:  # created concurrently — leave it alone
+            continue
+        except NotImplementedError:  # pragma: no cover - platforms without chmod
+            pass
+        except OSError as exc:
+            raise TimesheetError(
+                "data_dir_unwritable",
+                f"The folder '{directory}' could not be created: {exc.strerror or exc}.",
+                {"path": str(directory)},
+            ) from exc
 
 
 def safe_child(base: Path, *parts: str) -> Path:
@@ -155,9 +186,91 @@ def safe_child(base: Path, *parts: str) -> Path:
     return candidate
 
 
+@contextmanager
+def file_lock(path: Path, *, blocking: bool = True) -> Iterator[None]:
+    """Hold an exclusive cross-process lock for a read-modify-write cycle.
+
+    Two ``register`` runs at the same time would otherwise both read the old
+    registry and the second write would drop the first worker. On platforms
+    without ``fcntl``/``msvcrt`` the lock degrades to a no-op (single-user
+    desktop use stays correct; see README).
+    """
+    ensure_private_dir(path.parent)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, FILE_MODE)
+    acquired = False
+    try:
+        if fcntl is not None:
+            flags = fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB)
+            try:
+                fcntl.flock(fd, flags)
+                acquired = True
+            except OSError as exc:
+                raise TimesheetError(
+                    "data_dir_busy",
+                    "Another timesheet command is using this data folder right now. "
+                    "Please wait a moment and try again.",
+                    {"lock_file": str(path)},
+                ) from exc
+        elif msvcrt is not None:  # pragma: no cover - Windows only
+            mode = msvcrt.LK_LOCK if blocking else msvcrt.LK_NBLCK
+            try:
+                msvcrt.locking(fd, mode, 1)
+                acquired = True
+            except OSError as exc:
+                raise TimesheetError(
+                    "data_dir_busy",
+                    "Another timesheet command is using this data folder right now. "
+                    "Please wait a moment and try again.",
+                    {"lock_file": str(path)},
+                ) from exc
+        yield
+    finally:
+        if acquired:
+            try:
+                if fcntl is not None:
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                elif msvcrt is not None:  # pragma: no cover - Windows only
+                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            except OSError:  # pragma: no cover - best effort
+                pass
+        os.close(fd)
+
+
+def reserve_new_file(path: Path) -> None:
+    """Claim ``path`` exclusively, failing if it already exists.
+
+    Doing the existence check and the claim in one atomic step closes the gap
+    where a file appears between ``exists()`` and the final rename.
+    """
+    try:
+        handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, FILE_MODE)
+    except FileExistsError as exc:
+        raise TimesheetError(
+            "output_exists",
+            f"The file '{path}' already exists. Nothing was written. Repeat with --force to replace it.",
+            {"path": str(path)},
+        ) from exc
+    except OSError as exc:
+        raise TimesheetError(
+            "output_unwritable",
+            f"The file '{path}' could not be written: {exc.strerror or exc}.",
+            {"path": str(path)},
+        ) from exc
+    os.close(handle)
+
+
 def write_json_atomic(path: Path, payload: Any) -> None:
-    """Write JSON via tmp file + rename, owner-only where supported."""
-    _mkdir_owner_only(path.parent)
+    """Write JSON via tmp file + rename, owner-only where supported.
+
+    The parent directory must already exist — this helper never creates or
+    re-permissions directories it does not own.
+    """
+    if not path.parent.is_dir():
+        raise TimesheetError(
+            "output_dir_missing",
+            f"The folder '{path.parent}' does not exist, so '{path.name}' could not be written.",
+            {"path": str(path)},
+        )
     text = json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
     fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=".json")
     tmp_path = Path(tmp_name)

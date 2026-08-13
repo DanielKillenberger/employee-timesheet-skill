@@ -3,14 +3,28 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
 import timesheet
 from lib import registry as reg
-from lib.datadir import ENV_VAR, resolve_data_dir, safe_child, write_json_atomic
+from lib.datadir import (
+    ENV_VAR,
+    ensure_private_dir,
+    file_lock,
+    reserve_new_file,
+    resolve_data_dir,
+    safe_child,
+    write_json_atomic,
+)
 from lib.errors import TimesheetError
+
+SCRIPTS_DIR = Path(timesheet.__file__).resolve().parent
 
 
 @pytest.fixture()
@@ -149,6 +163,38 @@ def test_invalid_month_keys_rejected(month: str) -> None:
     assert excinfo.value.code == "invalid_month"
 
 
+@pytest.mark.parametrize("value", ["20260805", "2026-W32-3", "2026-8-5", "2026-08-05T00:00", " 2026-08-05 x"])
+def test_only_exact_iso_dates_accepted(value: str) -> None:
+    with pytest.raises(TimesheetError) as excinfo:
+        reg.validate_month_overrides({"2026-08": {"off": [value]}})
+    assert excinfo.value.code in {"invalid_date", "date_outside_month"}
+
+
+@pytest.mark.parametrize("value", [False, 0, {}, {"2026-08-05": True}, 5])
+def test_falsey_override_values_are_rejected(value: object) -> None:
+    with pytest.raises(TimesheetError) as excinfo:
+        reg.validate_month_overrides({"2026-08": {"off": value}})
+    assert excinfo.value.code == "invalid_overrides"
+
+
+def test_absent_or_null_override_field_means_no_dates() -> None:
+    assert reg.validate_month_overrides({"2026-08": {"off": None, "extra": ["2026-08-09"]}}) == {
+        "2026-08": {"off": [], "extra": ["2026-08-09"]}
+    }
+
+
+@pytest.mark.parametrize("label", ["CHF", "Swiss francs (gross)", "€", "brutto CHF / Stunde"])
+def test_currency_is_a_plain_label(data_dir, label: str) -> None:
+    record, _ = register_anna(data_dir, currency=label)
+    assert record["currency"] == label
+
+
+def test_currency_must_not_be_empty(data_dir) -> None:
+    with pytest.raises(TimesheetError) as excinfo:
+        register_anna(data_dir, currency="   ")
+    assert excinfo.value.code == "invalid_currency"
+
+
 def test_zero_working_days_allowed_with_warning(data_dir) -> None:
     record, warnings = register_anna(data_dir, weekdays="")
     assert record["working_weekdays"] == []
@@ -205,10 +251,102 @@ def test_persistent_data_dir_does_not_warn(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_atomic_write_leaves_no_temp_files(tmp_path: Path) -> None:
-    target = tmp_path / "out" / "bundle.json"
+    target = tmp_path / "bundle.json"
     write_json_atomic(target, {"hello": "world"})
     assert json.loads(target.read_text(encoding="utf-8")) == {"hello": "world"}
-    assert [p.name for p in target.parent.iterdir()] == ["bundle.json"]
+    assert [p.name for p in tmp_path.iterdir()] == ["bundle.json"]
+
+
+def test_atomic_write_never_touches_an_existing_directory(tmp_path: Path) -> None:
+    """Writing a file must not narrow the permissions of a folder we do not own."""
+    shared = tmp_path / "shared"
+    shared.mkdir(mode=0o755)
+    before = shared.stat().st_mode & 0o777
+    write_json_atomic(shared / "bundle.json", {"hello": "world"})
+    assert (shared.stat().st_mode & 0o777) == before
+    assert (shared / "bundle.json").stat().st_mode & 0o777 == 0o600
+
+
+def test_atomic_write_requires_an_existing_folder(tmp_path: Path) -> None:
+    with pytest.raises(TimesheetError) as excinfo:
+        write_json_atomic(tmp_path / "missing" / "bundle.json", {})
+    assert excinfo.value.code == "output_dir_missing"
+
+
+def test_ensure_private_dir_creates_owner_only_without_touching_parents(tmp_path: Path) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir(mode=0o755)
+    before = parent.stat().st_mode & 0o777
+    ensure_private_dir(parent / "data")
+    assert (parent / "data").stat().st_mode & 0o777 == 0o700
+    assert (parent.stat().st_mode & 0o777) == before
+
+
+def test_reserve_new_file_is_exclusive(tmp_path: Path) -> None:
+    target = tmp_path / "bundle.json"
+    reserve_new_file(target)
+    with pytest.raises(TimesheetError) as excinfo:
+        reserve_new_file(target)
+    assert excinfo.value.code == "output_exists"
+
+
+# --------------------------------------------------------------------------
+# concurrency
+# --------------------------------------------------------------------------
+
+
+def _cli_env() -> dict[str, str]:
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(SCRIPTS_DIR)
+    return env
+
+
+def test_registry_lock_is_exclusive_across_processes(data_dir) -> None:
+    probe = (
+        "import sys; sys.path.insert(0, %r);"
+        "from lib.datadir import file_lock; from lib.errors import TimesheetError;"
+        "from pathlib import Path;"
+        "\ntry:\n"
+        "    ctx = file_lock(Path(sys.argv[1]), blocking=False)\n"
+        "    ctx.__enter__(); ctx.__exit__(None, None, None); print('acquired')\n"
+        "except TimesheetError as error:\n"
+        "    print(error.code)\n"
+    ) % str(SCRIPTS_DIR)
+
+    with file_lock(data_dir.lock_path):
+        held = subprocess.run(
+            [sys.executable, "-c", probe, str(data_dir.lock_path)],
+            capture_output=True, text=True, check=True,
+        )
+    free = subprocess.run(
+        [sys.executable, "-c", probe, str(data_dir.lock_path)],
+        capture_output=True, text=True, check=True,
+    )
+    assert held.stdout.strip() == "data_dir_busy"
+    assert free.stdout.strip() == "acquired"
+
+
+def test_parallel_registrations_do_not_lose_workers(tmp_path: Path) -> None:
+    """Without a lock the last writer would overwrite the others' records."""
+    home = tmp_path / "home"
+    ids = [f"w{index}" for index in range(8)]
+
+    def register(worker_id: str) -> int:
+        return subprocess.run(
+            [
+                sys.executable, str(SCRIPTS_DIR / "timesheet.py"),
+                "register", "--worker", worker_id, "--name", f"Worker {worker_id}",
+                "--weekdays", "mon", "--rate", "7.50",
+                "--data-dir", str(home), "--json",
+            ],
+            capture_output=True, text=True, env=_cli_env(),
+        ).returncode
+
+    with ThreadPoolExecutor(max_workers=len(ids)) as pool:
+        assert list(pool.map(register, ids)) == [0] * len(ids)
+
+    stored = resolve_data_dir(str(home))
+    assert [worker["id"] for worker in reg.list_workers(stored)] == sorted(ids)
 
 
 def test_corrupt_registry_reports_clearly(data_dir) -> None:
@@ -390,6 +528,39 @@ def test_cli_export_refuses_to_overwrite(tmp_path: Path, capsys) -> None:
     bundle_path.write_text("{}", encoding="utf-8")
     assert run_cli("export-data", "--output", str(bundle_path), "--data-dir", str(home), "--json") == 1
     assert json.loads(capsys.readouterr().err)["code"] == "output_exists"
+
+
+def test_cli_export_refuses_git_worktree_destination(tmp_path: Path, capsys) -> None:
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    exit_code = run_cli(
+        "export-data", "--output", str(repo / "workers.json"), "--data-dir", str(tmp_path / "home"), "--json"
+    )
+    assert exit_code == 1
+    assert json.loads(capsys.readouterr().err)["code"] == "export_into_git_repo"
+    assert not (repo / "workers.json").exists()
+
+
+def test_cli_missing_required_argument_is_structured(capsys) -> None:
+    exit_code = run_cli("register", "--json")
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    error = json.loads(captured.err)
+    assert error["code"] == "invalid_arguments"
+    assert captured.out == ""
+
+
+def test_cli_unknown_subcommand_is_structured(capsys) -> None:
+    assert run_cli("frobnicate") == 1
+    assert json.loads(capsys.readouterr().err)["code"] == "invalid_arguments"
+
+
+def test_cli_import_missing_file_is_structured(tmp_path: Path, capsys) -> None:
+    exit_code = run_cli(
+        "import-data", "--input", str(tmp_path / "nope.json"), "--data-dir", str(tmp_path / "home"), "--json"
+    )
+    assert exit_code == 1
+    assert json.loads(capsys.readouterr().err)["code"] == "input_missing"
 
 
 def test_cli_rejects_malformed_override_argument(tmp_path: Path, capsys) -> None:

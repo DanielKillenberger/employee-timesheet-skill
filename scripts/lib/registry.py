@@ -23,13 +23,16 @@ import re
 from datetime import date, datetime, timezone
 from typing import Any, Iterable
 
-from .datadir import DataDir, read_json, write_json_atomic
+from .datadir import DataDir, file_lock, read_json, write_json_atomic
 from .errors import TimesheetError
 from .money import canonical_decimal_string, parse_rate
 
 WORKER_ID_PATTERN = r"^[a-z0-9][a-z0-9_-]{0,31}$"
 _WORKER_ID_RE = re.compile(WORKER_ID_PATTERN)
 _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+# date.fromisoformat() also accepts '20260805' and '2026-W32-3'; the registry
+# stores exactly one date shape, so the shape is checked before parsing.
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 WEEKDAYS: tuple[str, ...] = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 _WEEKDAY_ORDER = {name: index for index, name in enumerate(WEEKDAYS)}
@@ -40,7 +43,6 @@ BUNDLE_KIND = "employee-timesheet-registry"
 DEFAULT_CURRENCY = "CHF"
 
 MAX_NAME_LENGTH = 120
-MAX_CURRENCY_LENGTH = 16
 
 
 def _now() -> str:
@@ -79,19 +81,18 @@ def validate_display_name(raw: object) -> str:
 
 
 def validate_currency(raw: object | None) -> str:
+    """Currency is a plain label (spec R1) — it is never checked against a code list.
+
+    Only surrounding whitespace is trimmed; the label is otherwise stored as
+    typed, so 'Swiss francs (gross)' is as valid as 'CHF'.
+    """
     if raw is None:
         return DEFAULT_CURRENCY
     if not isinstance(raw, str):
         raise TimesheetError("invalid_currency", "The currency label must be text.", {"value": repr(raw)})
-    label = " ".join(raw.split())
+    label = raw.strip()
     if not label:
         raise TimesheetError("invalid_currency", "The currency label must not be empty.", {"value": raw})
-    if len(label) > MAX_CURRENCY_LENGTH:
-        raise TimesheetError(
-            "invalid_currency",
-            f"The currency label is too long (maximum {MAX_CURRENCY_LENGTH} characters).",
-            {"length": len(label)},
-        )
     return label
 
 
@@ -144,6 +145,8 @@ def _validate_date_in_month(raw: object, month: str) -> str:
         raise TimesheetError("invalid_date", "Dates must be text in the form YYYY-MM-DD.", {"value": repr(raw)})
     value = raw.strip()
     try:
+        if _DATE_RE.fullmatch(value) is None:
+            raise ValueError("unexpected date shape")
         parsed = date.fromisoformat(value)
     except ValueError as exc:
         raise TimesheetError(
@@ -190,7 +193,11 @@ def validate_month_overrides(raw: object) -> dict[str, dict[str, list[str]]]:
 
         buckets: dict[str, list[str]] = {}
         for kind in ("off", "extra"):
-            values = entry.get(kind) or []
+            # Only an absent or explicitly null field means "no dates"; a
+            # falsey value such as 0, false or {} is a malformed record.
+            values = entry.get(kind)
+            if values is None:
+                values = []
             if isinstance(values, str):
                 values = [part for part in values.split(",")]
             if not isinstance(values, (list, tuple)):
@@ -358,6 +365,32 @@ def register_worker(
     month.
     """
     validated_id = validate_worker_id(worker_id)
+    # The whole read-modify-write cycle is held under one lock, so two parallel
+    # registrations cannot each read the old registry and drop the other's worker.
+    with file_lock(data_dir.lock_path):
+        return _register_locked(
+            data_dir,
+            validated_id,
+            display_name=display_name,
+            weekdays=weekdays,
+            rate=rate,
+            currency=currency,
+            month_overrides=month_overrides,
+            replace_overrides=replace_overrides,
+        )
+
+
+def _register_locked(
+    data_dir: DataDir,
+    validated_id: str,
+    *,
+    display_name: object | None,
+    weekdays: object | None,
+    rate: object | None,
+    currency: object | None,
+    month_overrides: object | None,
+    replace_overrides: bool,
+) -> tuple[dict[str, Any], list[str]]:
     registry = load_registry(data_dir)
     existing = registry["workers"].get(validated_id)
 
@@ -461,16 +494,18 @@ def import_bundle(data_dir: DataDir, bundle: object, *, force: bool = False) -> 
         validated[record["id"]] = record
         warnings.extend(record_warnings(record))
 
-    registry = load_registry(data_dir)
-    clobbered = sorted(set(validated) & set(registry["workers"]))
-    if clobbered and not force:
-        raise TimesheetError(
-            "import_would_overwrite",
-            "These workers are already registered here: "
-            f"{', '.join(clobbered)}. Nothing was changed. Repeat with --force to overwrite them.",
-            {"workers": clobbered},
-        )
+    # Read-modify-write under one lock, exactly like registration.
+    with file_lock(data_dir.lock_path):
+        registry = load_registry(data_dir)
+        clobbered = sorted(set(validated) & set(registry["workers"]))
+        if clobbered and not force:
+            raise TimesheetError(
+                "import_would_overwrite",
+                "These workers are already registered here: "
+                f"{', '.join(clobbered)}. Nothing was changed. Repeat with --force to overwrite them.",
+                {"workers": clobbered},
+            )
 
-    registry["workers"].update(validated)
-    save_registry(data_dir, registry)
+        registry["workers"].update(validated)
+        save_registry(data_dir, registry)
     return sorted(validated), warnings

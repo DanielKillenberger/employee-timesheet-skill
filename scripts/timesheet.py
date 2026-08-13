@@ -24,7 +24,14 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib import registry as reg  # noqa: E402
-from lib.datadir import DataDir, read_json, resolve_data_dir, write_json_atomic  # noqa: E402
+from lib.datadir import (  # noqa: E402
+    DataDir,
+    find_git_worktree,
+    read_json,
+    reserve_new_file,
+    resolve_data_dir,
+    write_json_atomic,
+)
 from lib.errors import TimesheetError  # noqa: E402
 
 EXIT_ERROR = 1
@@ -70,6 +77,23 @@ def _data_dir(args: argparse.Namespace) -> DataDir:
     return resolve_data_dir(args.data_dir, allow_repo_data=args.allow_repo_data)
 
 
+def _resolve_outside_git(path: Path, allow_repo_data: bool) -> Path:
+    """Refuse to write a worker bundle anywhere git could pick it up."""
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    resolved = (path.parent.resolve() / path.name) if path.parent.exists() else path.resolve()
+    worktree = find_git_worktree(resolved.parent)
+    if worktree is not None and not allow_repo_data:
+        raise TimesheetError(
+            "export_into_git_repo",
+            f"'{resolved}' is inside the code folder '{worktree}', which is managed by git. "
+            "Worker data must never land somewhere it could be committed. Please choose a "
+            "folder outside this project, for example your home folder.",
+            {"path": str(resolved), "git_worktree": str(worktree)},
+        )
+    return resolved
+
+
 # --------------------------------------------------------------------------
 # subcommands
 # --------------------------------------------------------------------------
@@ -110,17 +134,14 @@ def cmd_show(args: argparse.Namespace) -> dict[str, Any]:
 def cmd_export_data(args: argparse.Namespace) -> dict[str, Any]:
     data_dir = _data_dir(args)
     bundle = reg.export_bundle(data_dir)
-    output = Path(args.output).expanduser()
-    if not args.force and output.exists():
-        raise TimesheetError(
-            "output_exists",
-            f"The file '{output}' already exists. Nothing was written. Repeat with --force to replace it.",
-            {"path": str(output)},
-        )
+    output = _resolve_outside_git(Path(args.output).expanduser(), args.allow_repo_data)
+    if not args.force:
+        # Atomic claim: no window between checking and writing.
+        reserve_new_file(output)
     write_json_atomic(output, bundle)
     return {
         "command": "export-data",
-        "path": str(output.resolve()),
+        "path": str(output),
         "worker_count": len(bundle["workers"]),
         "data_dir": str(data_dir.path),
         "warnings": list(data_dir.warnings),
@@ -196,8 +217,19 @@ def _emit(payload: dict[str, Any], as_json: bool) -> None:
 # --------------------------------------------------------------------------
 
 
+class StructuredArgumentParser(argparse.ArgumentParser):
+    """argparse that reports usage problems through the JSON error contract."""
+
+    def error(self, message: str) -> Any:  # type: ignore[override]
+        raise TimesheetError(
+            "invalid_arguments",
+            f"{message.capitalize()}. Run '{self.prog} --help' to see the available options.",
+            {"usage": self.format_usage().strip()},
+        )
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = StructuredArgumentParser(
         prog="timesheet",
         description="Generate and evaluate monthly employee timesheets.",
     )
@@ -251,14 +283,23 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
+    as_json = True
     try:
+        args = build_parser().parse_args(argv)
+        as_json = bool(getattr(args, "json", False))
         payload = args.func(args)
     except TimesheetError as error:
         print(json.dumps(error.to_dict(), indent=2, ensure_ascii=False), file=sys.stderr)
         return EXIT_ERROR
-    _emit(payload, args.json)
+    except OSError as error:
+        failure = TimesheetError(
+            "io_error",
+            f"A file could not be read or written: {error.strerror or error}.",
+            {"filename": getattr(error, "filename", None)},
+        )
+        print(json.dumps(failure.to_dict(), indent=2, ensure_ascii=False), file=sys.stderr)
+        return EXIT_ERROR
+    _emit(payload, as_json)
     return 0
 
 
