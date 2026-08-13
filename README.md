@@ -22,6 +22,11 @@ It is not payroll, tax, social-insurance or employment-law software.
 
 You need: a Claude account, a web browser. Nothing else. Takes about 3 minutes.
 
+The skill works in regular Claude chat and in Claude Cowork, on every plan
+(Free, Pro, Max, Team, Enterprise) — the only requirement is that code
+execution is switched on (Step 2; on Team/Enterprise an owner may need to
+enable it first, see Troubleshooting).
+
 **Step 1 — download the skill file.**
 
 1. Open <https://github.com/DanielKillenberger/employee-timesheet-skill/releases/latest>

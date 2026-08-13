@@ -284,6 +284,7 @@ def cmd_validate_extraction(args: argparse.Namespace) -> dict[str, Any]:
             "observed_name": identity["observed_name"],
             "registered_name": identity["registered_name"],
         },
+        "extraction_report": ex.extraction_report(session),
         "needs_attention": attention,
         "needs_attention_count": len(attention),
         "evidence": session["evidence"],

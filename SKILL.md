@@ -143,9 +143,13 @@ python3 scripts/timesheet.py validate-extraction --worker anna --month 2026-03 \
 Pass `--photo` once per image so the original is kept as evidence. `--overwrite`
 redoes an earlier reading of the same month.
 
-The result gives a **provisional** total and a `needs_attention` list. Present
-that list to the user in plain language, one line per day, e.g. "Mi, 11.03. — I
-could not read the hours. What does it say?" Also report:
+The result gives the full per-day transcription (`extraction_report`), a
+**provisional** total, and a `needs_attention` list. **Show the user the
+complete transcription first** — every day with what was read (hours, zero,
+blank, or unreadable) and how confident the reading is — so they can spot a
+wrong value even on days that look fine. A compact table works well. Then walk
+the `needs_attention` list in plain language, one line per day, e.g.
+"Mi, 11.03. — I could not read the hours. What does it say?" Also report:
 
 - `identity.status` — if it is `mismatch` or `unreadable`, **stop and ask**: the
   name on the sheet is not the registered name. Never assume a nickname.

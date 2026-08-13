@@ -659,6 +659,19 @@ def test_cli_validate_then_confirm_walks_the_whole_flow(data_dir, tmp_path) -> N
     assert payload["identity"]["status"] == "matched"
     assert payload["evidence"][0]["sha256"]
 
+    # R3: the CLI reports the COMPLETE per-day transcription, not just the
+    # attention subset — one entry per calendar date, each carrying the reading.
+    report = payload["extraction_report"]
+    assert len(report) == payload["days"]
+    assert [d["date"] for d in report] == sorted(d["date"] for d in report)
+    for day in report:
+        assert set(day) == {"date", "label", "working", "kind", "value", "confidence", "flags"}
+        assert day["kind"] in {"value", "zero", "blank", "unreadable"}
+    kinds = {d["kind"] for d in report}
+    assert "value" in kinds and "blank" in kinds  # clean days appear alongside flagged ones
+    attention_dates = {d["date"] for d in payload["needs_attention"]}
+    assert attention_dates < {d["date"] for d in report}
+
     code, blocked = run_cli(["confirm", "--worker", "anna", "--month", MONTH], data_dir)
     assert code == 1 and blocked["code"] == "blank_working_day"
 

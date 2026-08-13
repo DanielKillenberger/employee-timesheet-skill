@@ -421,6 +421,24 @@ def day_needs_attention(day: Mapping[str, Any]) -> bool:
     return bool(day.get("flags")) and not day.get("accepted")
 
 
+def extraction_report(session: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The complete per-day transcription — every calendar date, not just the
+    days needing attention. R3 requires the user to see the full reading
+    (value/zero/blank/unreadable plus confidence) before anything is confirmed."""
+    return [
+        {
+            "date": day["date"],
+            "label": day["label"],
+            "working": day["working"],
+            "kind": day["kind"],
+            "value": day["value"],
+            "confidence": day["confidence"],
+            "flags": list(day["flags"]),
+        }
+        for day in session["days"]
+    ]
+
+
 def attention_items(session: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Every day still standing between this session and a payroll result."""
     items: list[dict[str, Any]] = []

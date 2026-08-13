@@ -1,7 +1,7 @@
 {
   "branch_name": "fn-1-monthly-employee-timesheet-skill",
-  "completion_review_status": "unknown",
-  "completion_reviewed_at": null,
+  "completion_review_status": "needs_work",
+  "completion_reviewed_at": "2026-08-13T21:28:53.433594Z",
   "created_at": "2026-08-13T17:52:32.955943Z",
   "default_impl": null,
   "default_review": null,
@@ -16,7 +16,7 @@
     "fn-1-monthly-employee-timesheet-skill.6": 0
   },
   "next_task": 1,
-  "plan_review_rounds": 0,
+  "plan_review_rounds": 1,
   "plan_review_status": "ship",
   "plan_reviewed_at": "2026-08-13T19:02:18.561126Z",
   "review_attempts": [
@@ -714,6 +714,20 @@
       "task": "fn-1-monthly-employee-timesheet-skill.6",
       "timestamp": "2026-08-13T21:23:20.202742Z",
       "verdict": "SHIP"
+    },
+    {
+      "backend": "codex",
+      "counter_kind": "plan",
+      "failure_class": null,
+      "head_sha": "a5fa850b78675da8c1cafb657430ba2dba768b7d",
+      "kind": "completion",
+      "outcome": "verdict",
+      "output_sha256": "fc63efe60ec4695c0cbbfc1e4d45ad954f1e54f5d360af452aa0af696f0d7781",
+      "round_consumed": true,
+      "scope": "completion",
+      "task": null,
+      "timestamp": "2026-08-13T21:28:53.424148Z",
+      "verdict": "NEEDS_WORK"
     }
   ],
   "review_hash_epoch": {
@@ -722,6 +736,7 @@
   "review_pending_rounds": {},
   "review_reservations": {},
   "review_transport_failures": {
+    "completion": 0,
     "impl:fn-1-monthly-employee-timesheet-skill.1": 0,
     "impl:fn-1-monthly-employee-timesheet-skill.2": 0,
     "impl:fn-1-monthly-employee-timesheet-skill.3": 0,
@@ -743,5 +758,5 @@
     "mergeBaseTracker": null,
     "url": null
   },
-  "updated_at": "2026-08-13T21:23:20.202817Z"
+  "updated_at": "2026-08-13T21:28:53.433594Z"
 }
