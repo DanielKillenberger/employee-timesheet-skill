@@ -759,7 +759,7 @@
     "plan": 0
   },
   "spec_path": ".flow/specs/fn-1-monthly-employee-timesheet-skill.md",
-  "status": "open",
+  "status": "done",
   "title": "Monthly employee timesheet skill",
   "tracker": {
     "baseHashFlow": null,
@@ -772,5 +772,5 @@
     "mergeBaseTracker": null,
     "url": null
   },
-  "updated_at": "2026-08-13T21:31:03.505957Z"
+  "updated_at": "2026-08-13T21:34:52.169682Z"
 }
