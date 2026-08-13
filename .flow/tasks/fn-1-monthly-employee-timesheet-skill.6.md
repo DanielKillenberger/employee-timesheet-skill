@@ -108,17 +108,22 @@ Two nits from that test: README step 1 pointed at `/releases` rather than
 `/releases/latest` (**fixed** — it now deep-links to the newest release), and
 there are no screenshots (noted, judged non-blocking for a text relay).
 
-**Leg 3 — in-account pass: user-owned post-release QA, deliberately deferred.**
-Uploading the ZIP into Daniel's own claude.ai account and running one live
-conversational pass is his to do, by his own choice of test workflow — this
-environment has no signed-in session and a background worker must not change
-someone's account settings unasked. It is recorded as an open, owned QA item,
-not a silent skip: upload via Customize → Skills → `+` → `+ Create skill` →
-Upload a skill, confirm it is accepted and enabled, then run one
-register → generate → photo → confirm → tally conversation. Everything that
-step exercises below the Claude surface — the packaged ZIP layout, the runtime
-in a bare folder, the vision→confirm→tally cycle, and the written guidance an
-assistant relays — is verified above.
+**Leg 3 — in-account pass, PERFORMED 2026-08-13 by the user: PASS.** Daniel
+uploaded `dist/employee-timesheet.zip` into his own claude.ai account via
+Customize → Skills and ran the live conversational pass —
+register → generate → photo → confirm → tally. Reported verbatim in session:
+*"it works fine"*, no breakage. The upload was accepted, the skill was invoked
+conversationally, and the full cycle completed on the Claude surface.
+
+This leg was necessarily user-performed: it needs a signed-in account, and a
+background worker must not change someone's account settings unasked. The
+evidence is therefore the user's own report rather than a captured transcript —
+recorded as such, and consistent with legs 1 and 2, which verified the same
+cycle mechanically below the Claude surface.
+
+With all three legs done, AC11 is met: the packaged ZIP installs and runs, the
+written guidance is relayable from the repo link alone, and the real
+install-and-use flow was exercised in a live account.
 
 Friction found and **fixed** (not documented around):
 - SKILL.md did not say where to run the script from → now states "from the
