@@ -149,6 +149,55 @@ def test_is_excluded_catches_stray_local_data() -> None:
     assert not is_excluded(Path("scripts/timesheet.py"))
 
 
+def _skeleton(root: Path) -> None:
+    (root / "SKILL.md").write_text("---\nname: employee-timesheet\n---\nbody\n")
+    for name in ("scripts", "references", "assets"):
+        (root / name).mkdir()
+    (root / "scripts" / "timesheet.py").write_text("print('hi')\n")
+
+
+def test_a_symlink_to_an_outside_file_is_refused(tmp_path: Path) -> None:
+    """The one way payroll data could ride along under an innocent name."""
+    secret = tmp_path / "outside" / "employees.json"
+    secret.parent.mkdir()
+    secret.write_text('{"workers": ["real payroll data"]}')
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    _skeleton(root)
+    (root / "assets" / "logo.png").symlink_to(secret)
+
+    with pytest.raises(PackagingError) as excinfo:
+        collect_files(root)
+    message = str(excinfo.value)
+    assert "symlink" in message.lower()
+    assert "logo.png" in message
+
+
+def test_a_symlink_inside_the_project_is_refused_too(tmp_path: Path) -> None:
+    """Resolving inside the repo is not a licence to package a link."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    _skeleton(root)
+    (root / "references" / "copy.md").symlink_to(root / "SKILL.md")
+
+    with pytest.raises(PackagingError):
+        collect_files(root)
+
+
+def test_a_plain_tree_still_collects(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    _skeleton(root)
+    (root / "assets" / "default-tally-template.xlsx").write_bytes(b"PK\x03\x04")
+    collected = {path.as_posix() for path in collect_files(root)}
+    assert collected == {
+        "SKILL.md",
+        "scripts/timesheet.py",
+        "assets/default-tally-template.xlsx",
+    }
+
+
 def test_collect_files_refuses_an_incomplete_repository(tmp_path: Path) -> None:
     (tmp_path / "SKILL.md").write_text("---\nname: x\n---\n")
     with pytest.raises(PackagingError) as excinfo:

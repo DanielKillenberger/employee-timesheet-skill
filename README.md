@@ -12,7 +12,9 @@ It is not payroll, tax, social-insurance or employment-law software.
 - Photo of the filled-in sheet is read by Claude and **checked with you** before
   anything is final — unreadable handwriting is never guessed.
 - Final statement (Abrechnung) as PDF, optionally on your own Excel letterhead.
-- Employee names, rates, photos and statements stay on your own machine.
+- The skill sends employee data nowhere of its own: it only writes files where
+  you tell it to. Where those files physically live depends on how you use
+  Claude — see [Data and privacy](#data-and-privacy).
 
 ---
 
@@ -31,25 +33,27 @@ You need: a Claude account, a web browser. Nothing else. Takes about 3 minutes.
    browser unpacked it automatically (Safari does this), see Troubleshooting
    below.
 
-**Step 2 — upload it to Claude.**
+**Step 2 — switch on code execution.** The skill makes real Excel and PDF
+files, so Claude needs its code tool. Do this before uploading.
 
 1. Go to <https://claude.ai> and sign in.
-2. Click your **initials or profile picture** in the bottom-left corner.
-3. Click **Settings**.
-4. In the list on the left, click **Capabilities** (on some accounts this is
-   called **Customize**).
-5. Find the **Skills** section and click it.
-6. Click **Upload skill**.
-7. Choose the `employee-timesheet.zip` file you just downloaded and confirm.
-8. "Employee timesheet" now appears in your skills list with a switch next to
+2. Click your **initials or profile picture** in the bottom-left corner, then
+   click **Settings**.
+3. Open **Capabilities** and switch on **Code execution and file creation**.
+4. *Team or Enterprise account?* An owner must first switch on **Code execution
+   and file creation** *and* **Skills** under **Organization settings →
+   Skills**. If you cannot see those switches, ask whoever administers your
+   Claude account to do it once.
+
+**Step 3 — upload the skill.**
+
+1. In the left sidebar of claude.ai, click **Customize**, then **Skills**.
+2. Click the **`+`** button.
+3. Click **`+ Create skill`**.
+4. Choose **Upload a skill**.
+5. Pick the `employee-timesheet.zip` file you downloaded and confirm.
+6. "Employee timesheet" now appears in your skills list with a switch next to
    it. Make sure the switch is **on**.
-
-**Step 3 — check that code execution is on.** The skill makes real Excel and
-PDF files, so Claude needs its code tool.
-
-1. Still in **Settings → Capabilities**, look for **Code execution** (it may be
-   called **Analysis tool** or **Code interpreter**).
-2. Switch it **on** if it is off.
 
 **Step 4 — try it.** Start a new chat and type:
 
@@ -62,19 +66,21 @@ hourly wage. You never have to type a command.
 
 | What you see | What to do |
 | --- | --- |
-| No **Skills** section in Settings | Skills are in **Capabilities** on most accounts and under **Customize** on others. If neither shows it, your Claude app may be out of date — reload the page. |
+| No **Skills** entry under **Customize** | On a Team or Enterprise account an owner has to switch **Skills** on once under **Organization settings → Skills**. Otherwise reload the page — the app may be out of date. |
 | The upload is rejected | You probably uploaded an unpacked folder or the wrong file. Download `employee-timesheet.zip` again and upload the ZIP itself, unopened. Safari users: in Safari → Settings → General, switch off "Open safe files after downloading", then download again. |
-| Claude says it cannot run code | Turn on code execution (Step 3). Without it the skill cannot make Excel or PDF files. |
+| Claude says it cannot run code | Turn on **Code execution and file creation** (Step 2). Without it the skill cannot make Excel or PDF files. |
 | Claude does not use the skill | Say it plainly: "Use the employee timesheet skill." Also check the switch next to the skill is on. |
 | The files Claude makes disappear | In a normal chat, files live only for that conversation. Download them right away, and ask Claude for the "export bundle" at the end so your employee's record can be restored next time. In Cowork with a connected folder, files stay on your computer. |
 
 ### Where your data is kept
 
 Ask Claude to keep everything in a **folder of your own** for business data,
-for example `Timesheet-Data` in your home folder. Employee records, photos of
-filled-in sheets and finished statements are written there — never into this
-project folder, and never into the public repository. The skill actively refuses
-to store payroll data inside a code folder.
+for example `Timesheet-Data`. Employee records, photos of filled-in sheets and
+finished statements are written there — never into this project folder, and
+never into the public repository; the skill refuses a data folder inside a code
+project. Whether that folder is on *your computer* or inside Claude's temporary
+workspace depends on how you use Claude — read
+[Data and privacy](#data-and-privacy) before you start.
 
 ---
 
@@ -106,11 +112,26 @@ of placeholders is in [`references/templates.md`](references/templates.md).
 
 ## Data and privacy
 
-- Employee records, photos and generated documents live in your local data
-  folder (`~/.employee-timesheet` by default, or wherever you tell Claude).
-- Nothing is uploaded anywhere by the skill, and nothing is committed to git.
-  The scripts refuse a data folder inside a git project, and `.gitignore`
-  blocks the same paths as a second line of defence.
+**Be clear-eyed about where the data goes.** There are three ways to run this
+skill and they are not equally private:
+
+| How you use it | Where the files land | What Claude sees |
+| --- | --- | --- |
+| **Cowork with a connected folder** | On your own computer, in the folder you connected | The photo you upload and what you type, as in any Claude conversation |
+| **Regular claude.ai chat** | In Claude's temporary workspace for that conversation — they disappear afterwards, so download them | Same |
+| **Locally from a terminal** (developers) | On your own computer only | Nothing — the scripts alone make no network calls at all |
+
+In the first two cases you are using Claude normally: the photo of the sheet
+and the employee's name, hours and rate are part of the conversation and are
+processed by Anthropic under their usual terms. The skill itself adds no upload,
+no analytics and no third party of its own. If that is not acceptable for your
+employee data, use the local terminal route.
+
+In every case:
+
+- Nothing is committed to git. The scripts refuse a data folder — or an export
+  bundle — inside a git project, and `.gitignore` blocks the same paths as a
+  second line of defence.
 - The repository is public and deliberately contains no real employee data and
   no filled-in sheet photos.
 - Gross pay only: hours × rate. Tax, social insurance, overtime premiums,
@@ -133,13 +154,19 @@ export TIMESHEET_DATA_DIR=~/timesheet-data
 uv run scripts/timesheet.py register --worker anna --name "Anna Muster" \
   --weekdays mon,tue,wed,thu,fri --rate 28.50 --currency CHF --json
 uv run scripts/timesheet.py generate --worker anna --month 2026-03 --json
+
+# transcribed hours and photos are payroll data too: keep them out of the repo
 uv run scripts/timesheet.py validate-extraction --worker anna --month 2026-03 \
-  --entries entries.json --photo sheet.jpg --json
+  --entries "$TIMESHEET_DATA_DIR/entries.json" \
+  --photo "$TIMESHEET_DATA_DIR/sheet.jpg" --json
 uv run scripts/timesheet.py confirm --worker anna --month 2026-03 --set 2026-03-11=6 --json
 uv run scripts/timesheet.py tally --worker anna --month 2026-03 --json
-uv run scripts/timesheet.py export-data --output bundle.json --json
-uv run scripts/timesheet.py import-data --input bundle.json --json
+uv run scripts/timesheet.py export-data --output "$TIMESHEET_DATA_DIR/bundle.json" --json
+uv run scripts/timesheet.py import-data --input "$TIMESHEET_DATA_DIR/bundle.json" --json
 ```
+
+`export-data` refuses to write inside a git worktree, so the bundle path must
+be outside the clone — as above.
 
 Every subcommand takes `--json` and `--data-dir`, and fails with
 `{"code", "message", "detail"}` on stderr and a non-zero exit code.

@@ -82,6 +82,29 @@ def is_excluded(path: Path) -> bool:
     return any(part in EXCLUDED_DIR_NAMES for part in path.parts)
 
 
+def assert_contained(root: Path, path: Path) -> None:
+    """Refuse anything that leaves the repository, symlinks included.
+
+    ``is_file()`` and ``ZipFile.write()`` both follow symlinks, so without this
+    a link such as ``assets/logo.png -> ~/.employee-timesheet/employees.json``
+    would be packaged under an innocent name and published with the release.
+    The name filters cannot see that; only the resolved target can.
+    """
+    if path.is_symlink():
+        raise PackagingError(
+            f"'{path.relative_to(root)}' is a symlink. Symlinks are not packaged, "
+            "because the file they point at can sit outside the project. "
+            "Replace it with a real file."
+        )
+    resolved_root = root.resolve()
+    resolved = path.resolve()
+    if resolved != resolved_root and resolved_root not in resolved.parents:
+        raise PackagingError(
+            f"'{path}' resolves to '{resolved}', outside the project folder "
+            f"'{resolved_root}'. Nothing outside the project is packaged."
+        )
+
+
 def collect_files(root: Path) -> list[Path]:
     """Every packageable file, as paths relative to *root*, sorted."""
     selected: list[Path] = []
@@ -92,6 +115,7 @@ def collect_files(root: Path) -> list[Path]:
             raise PackagingError(
                 f"{name} is missing from {root}; the skill cannot be packaged without it."
             )
+        assert_contained(root, candidate)
         selected.append(Path(name))
 
     for dirname in INCLUDED_DIRS:
@@ -101,11 +125,14 @@ def collect_files(root: Path) -> list[Path]:
                 f"The folder '{dirname}' is missing from {root}; "
                 "the skill cannot be packaged without it."
             )
+        assert_contained(root, directory)
         for path in sorted(directory.rglob("*")):
-            if not path.is_file():
-                continue
             relative = path.relative_to(root)
             if is_excluded(relative):
+                continue
+            # Checked before is_file(), which would follow the link.
+            assert_contained(root, path)
+            if not path.is_file():
                 continue
             selected.append(relative)
 

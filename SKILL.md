@@ -200,12 +200,14 @@ deliberately no silent fallback.
 ## Keeping data between conversations
 
 ```bash
-python3 scripts/timesheet.py export-data --output bundle.json --data-dir <DATA_DIR> --json
-python3 scripts/timesheet.py import-data --input bundle.json --data-dir <DATA_DIR> --json
+python3 scripts/timesheet.py export-data --output <DATA_DIR>/bundle.json --data-dir <DATA_DIR> --json
+python3 scripts/timesheet.py import-data --input <DATA_DIR>/bundle.json --data-dir <DATA_DIR> --json
 ```
 
-Export writes a small JSON with the worker records only. Import checks every
-record before writing anything; `--force` overwrites workers that already exist.
+Export writes a small JSON with the worker records only, then give the file to
+the user to keep. Import checks every record before writing anything; `--force`
+overwrites workers that already exist. The bundle path must be outside any code
+project — the command refuses a git folder, same as the data folder.
 
 ## Boundaries
 
