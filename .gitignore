@@ -10,10 +10,14 @@ build/
 *.zip
 
 # Local employee/payroll data
+# Defense in depth: the data directory lives outside every git worktree
+# (scripts refuse a data dir inside one), these patterns are the backstop.
 data/
 employees.json
 *.timesheet-data.json
 filled-timesheets/
+extractions/
+templates/
 
 # Generated documents
 output/
