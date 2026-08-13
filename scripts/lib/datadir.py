@@ -61,6 +61,13 @@ class DataDir:
     def lock_path(self) -> Path:
         return self.child(".registry.lock")
 
+    @property
+    def output_dir(self) -> Path:
+        """Folder for generated documents; created owner-only on first use."""
+        path = self.child("output")
+        ensure_private_dir(path)
+        return path
+
 
 def _ephemeral_roots() -> list[Path]:
     roots = {"/tmp", "/private/tmp", "/var/tmp", "/private/var/tmp", tempfile.gettempdir()}

@@ -5,6 +5,7 @@ Subcommands available so far::
 
     register       create or update a worker
     show           read a worker back (or list all)
+    generate       write the blank monthly sheet for a worker
     export-data    write a portable worker bundle (registry only)
     import-data    read a worker bundle back in, transactionally
 
@@ -33,6 +34,8 @@ from lib.datadir import (  # noqa: E402
     write_json_atomic,
 )
 from lib.errors import TimesheetError  # noqa: E402
+from lib.layout import build_month_layout  # noqa: E402
+from lib.xlsx_sheet import sheet_filename, write_month_sheet  # noqa: E402
 
 EXIT_ERROR = 1
 
@@ -131,6 +134,50 @@ def cmd_show(args: argparse.Namespace) -> dict[str, Any]:
     return payload
 
 
+def cmd_generate(args: argparse.Namespace) -> dict[str, Any]:
+    data_dir = _data_dir(args)
+    record = reg.get_worker(data_dir, args.worker)
+    layout = build_month_layout(record, args.month)
+
+    target = data_dir.output_dir / sheet_filename(layout)
+    if not args.force:
+        # Atomic claim, so a sheet someone already filled in is never silently
+        # replaced by a fresh blank one.
+        reserve_new_file(target)
+    try:
+        written = write_month_sheet(
+            layout,
+            target,
+            include_rate=args.include_rate,
+            hourly_rate=record["hourly_rate"],
+            currency=record["currency"],
+        )
+    except BaseException:
+        if not args.force:
+            target.unlink(missing_ok=True)  # drop the empty claim
+        raise
+
+    warnings = list(data_dir.warnings)
+    if not layout.working_rows:
+        warnings.append(
+            f"The sheet for {layout.title} has no working days at all. Check the worker's "
+            "weekdays and month exceptions."
+        )
+    return {
+        "command": "generate",
+        "worker": {"id": layout.worker_id, "display_name": layout.display_name},
+        "month": layout.month,
+        "month_title": layout.title,
+        "files": {"xlsx": written["path"]},
+        "days": written["rows"],
+        "working_days": written["working_days"],
+        "off_days": written["off_days"],
+        "rate_printed": bool(args.include_rate),
+        "data_dir": str(data_dir.path),
+        "warnings": warnings,
+    }
+
+
 def cmd_export_data(args: argparse.Namespace) -> dict[str, Any]:
     data_dir = _data_dir(args)
     bundle = reg.export_bundle(data_dir)
@@ -195,6 +242,14 @@ def _render_human(payload: dict[str, Any]) -> str:
                 f"{worker['id']}: {worker['display_name']} — {worker['hourly_rate']} {worker['currency']} "
                 f"— {', '.join(worker['working_weekdays']) or 'no working weekdays'}"
             )
+    elif command == "generate":
+        lines.append(
+            f"Wrote the timesheet for {payload['worker']['display_name']} "
+            f"({payload['month_title']}) to {payload['files']['xlsx']}."
+        )
+        lines.append(
+            f"  {payload['days']} days — {payload['working_days']} working, {payload['off_days']} off."
+        )
     elif command == "export-data":
         lines.append(f"Wrote {payload['worker_count']} worker(s) to {payload['path']}.")
     elif command == "import-data":
@@ -264,6 +319,18 @@ def build_parser() -> argparse.ArgumentParser:
     show.add_argument("--worker", help="Worker ID; omit to list every registered worker.")
     add_common(show)
     show.set_defaults(func=cmd_show)
+
+    generate = subparsers.add_parser("generate", help="Write the blank monthly sheet for a worker.")
+    generate.add_argument("--worker", required=True, help="Registered worker ID.")
+    generate.add_argument("--month", required=True, help="Month to generate, e.g. '2026-08'.")
+    generate.add_argument(
+        "--include-rate",
+        action="store_true",
+        help="Print the hourly rate on the sheet (left off by default).",
+    )
+    generate.add_argument("--force", action="store_true", help="Replace an existing sheet for this month.")
+    add_common(generate)
+    generate.set_defaults(func=cmd_generate)
 
     export = subparsers.add_parser(
         "export-data", help="Write a portable bundle of the worker registry (no photos, no sessions)."

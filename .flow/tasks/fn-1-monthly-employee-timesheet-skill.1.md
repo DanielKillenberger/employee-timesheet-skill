@@ -41,9 +41,8 @@ Create the uv project scaffold and the worker registry: `register`, `show`, `exp
 - [ ] Override preserve/replace tests
 - [ ] Bundle export/import tests
 ## Done summary
-TBD
-
+uv project scaffold plus the worker registry: strict decimal grammars for hours and rate with a single ROUND_HALF_UP gross-pay rounding, a local data directory that refuses git worktrees and warns on ephemeral paths, and `register`/`show`/`export-data`/`import-data` CLI subcommands with `--json` output and a `{code, message, detail}` error contract. Registry mutations run under a cross-process lock with atomic owner-only writes; import is transactional and re-runs every registration validator. 144 tests cover round-trip, ID/path safety, rounding boundaries, override precedence, bundles, concurrency, and CLI errors.
 ## Evidence
-- Commits:
-- Tests:
+- Commits: b81e8ffbdc7490e6be18c451d7223b4c06b6e933, 80eb6b4885bdbfaac684ee66296247cacee89e94
+- Tests: uv run pytest (144 passed), uv run scripts/timesheet.py --help, .flow/bin/flowctl validate --all --json (0 errors), baseline: none (scaffold created by this task), impl-review codex/gpt-5.6-sol: NEEDS_WORK (6 findings) -> SHIP (0 introduced)
 - PRs:

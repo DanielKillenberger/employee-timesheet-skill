@@ -25,16 +25,18 @@ from typing import Any, Iterable
 
 from .datadir import DataDir, file_lock, read_json, write_json_atomic
 from .errors import TimesheetError
+from .layout import MONTH_PATTERN, WEEKDAYS, validate_month
 from .money import canonical_decimal_string, parse_rate
 
 WORKER_ID_PATTERN = r"^[a-z0-9][a-z0-9_-]{0,31}$"
 _WORKER_ID_RE = re.compile(WORKER_ID_PATTERN)
-_MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 # date.fromisoformat() also accepts '20260805' and '2026-W32-3'; the registry
 # stores exactly one date shape, so the shape is checked before parsing.
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-WEEKDAYS: tuple[str, ...] = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+# WEEKDAYS/MONTH_PATTERN come from lib.layout — the leaf module the registry and
+# both sheet renderers share — and stay importable from here for callers that
+# already read the calendar vocabulary off the registry.
 _WEEKDAY_ORDER = {name: index for index, name in enumerate(WEEKDAYS)}
 
 REGISTRY_VERSION = 1
@@ -131,13 +133,7 @@ def validate_weekdays(raw: object) -> list[str]:
 
 
 def _validate_month_key(raw: object) -> str:
-    if not isinstance(raw, str) or _MONTH_RE.fullmatch(raw) is None:
-        raise TimesheetError(
-            "invalid_month",
-            f"'{raw}' is not a valid month. Use the form YYYY-MM, for example '2026-08'.",
-            {"value": raw},
-        )
-    return raw
+    return validate_month(raw)
 
 
 def _validate_date_in_month(raw: object, month: str) -> str:
