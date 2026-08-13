@@ -70,11 +70,29 @@ direction), open the file, and check:
 
 ## QA record
 
-| Date       | Build  | Sample                                                      | Result |
-| ---------- | ------ | ----------------------------------------------------------- | ------ |
-| 2026-08-13 | task .2 | `anna` / `2027-03` (31 days, `off 2027-03-02`, `extra 2027-03-06`) | pass, with the limitation noted below |
+| Date       | Build   | Sample                                                             | Viewed with                                                | Result |
+| ---------- | ------- | ------------------------------------------------------------------ | ---------------------------------------------------------- | ------ |
+| 2026-08-13 | task .2 | `anna` / `2027-03` (31 days, `off 2027-03-02`, `extra 2027-03-06`) | `tools/render_xlsx_preview.py` → A4 PDF → PNG, viewed as an image | pass   |
 
-What was inspected, on the file actually written to disk and read back:
+Reproduce with:
+
+```bash
+uv run scripts/timesheet.py generate --worker anna --month 2027-03
+uv run tools/render_xlsx_preview.py <data-dir>/output/anna-2027-03.xlsx /tmp/preview.pdf
+```
+
+Seen on the rendered page: one portrait A4 page, the whole table in the upper
+two thirds, nothing clipped or spilling into a second page; the title, the two
+identity lines and the three column headers all fully legible; 31 day rows from
+`Mo, 01.03.2027` to `Mi, 31.03.2027`; grey rows on `Di, 02.03.` (override day
+off) and every weekend **except** `Sa, 06.03.` (override working day); empty
+hour and remark cells throughout; `Total Stunden` in the final row.
+
+The preview draws the stored cell content, so the total row shows the formula
+text `=SUM(B6:B36)` where a spreadsheet would show the computed number — that
+is the preview tool, not the sheet.
+
+What was additionally checked on the file read back with openpyxl:
 
 - 31 day rows, `Mo, 01.03.2027` through `Mi, 31.03.2027`, each date once, in order.
 - Grey rows: `02.03.` (override day off, a Tuesday) plus the seven remaining
@@ -90,8 +108,9 @@ What was inspected, on the file actually written to disk and read back:
   fit is reliable, so the PDF renderer can share the layout model.**
 
 **Limitation, stated plainly:** no spreadsheet application (Excel, LibreOffice)
-was available in the build environment, so this pass inspected the parsed
-workbook and computed print geometry rather than an on-screen print preview.
-The visual print-preview check is carried by the PDF sheet in task `.4` and by
-the fresh-install walkthrough (AC11), where a rendered document exists to look
-at. Anyone with Excel to hand should still run the checklist above once.
+was installed in the build environment, so the page above was rendered by
+`tools/render_xlsx_preview.py` — a faithful redraw of the parsed workbook at its
+own column widths and row heights, not Excel's print engine. It proves the
+content and the A4 geometry; it cannot prove how a particular Excel version
+paginates. One real print preview should still be run before release, and the
+AC11 fresh-install walkthrough is the natural place for it.
