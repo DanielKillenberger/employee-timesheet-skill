@@ -24,10 +24,10 @@ You need: a Claude account, a web browser. Nothing else. Takes about 3 minutes.
 
 **Step 1 — download the skill file.**
 
-1. Open <https://github.com/DanielKillenberger/employee-timesheet-skill/releases>
-   in your browser. (Or: on the project page click **Releases** in the right
-   sidebar.)
-2. The newest release is at the top. Under its **Assets** list, click
+1. Open <https://github.com/DanielKillenberger/employee-timesheet-skill/releases/latest>
+   in your browser — it takes you straight to the newest release. (Or: on the
+   project page click **Releases** in the right sidebar.)
+2. Under the release's **Assets** list, click
    **`employee-timesheet.zip`**. It downloads to your Downloads folder.
 3. **Do not unzip it.** Claude wants the ZIP file exactly as it is. If your
    browser unpacked it automatically (Safari does this), see Troubleshooting

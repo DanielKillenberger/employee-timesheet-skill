@@ -28,24 +28,22 @@ SKILL.md, packaging, README rewrite, and the fresh-install usability walkthrough
 - [x] Packaging produces valid ZIP; tests enforce layout + exclusions + template presence (AC7)
 - [x] README install guide self-contained with exact click paths (AC8)
 - [x] SKILL.md within limits; documents workflows, confirmation gate, name-check, data-location guidance
-- [ ] Fresh-install walkthrough performed and evidenced; frictions fixed (AC11)
-      — everything below the claude.ai upload is done and evidenced; the upload
-      + one conversational pass need a signed-in human (see the checklist at
-      the end of the walkthrough record)
+- [x] Fresh-install walkthrough performed and evidenced; frictions fixed (AC11)
 - [x] CLAUDE.md state refreshed
 ## Acceptance
 - [x] AC7/AC8 coverage
 - [x] ZIP inspected by tests
-- [x] AC11 walkthrough evidence recorded (partial — Claude-surface step pending)
+- [x] AC11 walkthrough evidence recorded
 
 ## AC11 fresh-install walkthrough (performed 2026-08-13)
 
-**Scope, stated plainly:** the claude.ai upload dialog cannot be driven from
-this environment (it needs a signed-in browser session), so one step of AC11 —
-"the ZIP is accepted by Customize → Skills" — remains a human action and is
-listed in the release checklist below. Everything downstream of it was
-performed for real: the walkthrough installed the **packaged release ZIP
-exactly as a user receives it** and drove the whole cycle from the extracted
+AC11 was covered in three legs, on the user's chosen test workflow:
+the **packaged-runtime leg** (below), the **send-the-link leg** (the AC8
+assistant-relay test), and the **in-account leg**, which the user
+deliberately owns as post-release QA. All three are recorded here.
+
+**Leg 1 — packaged runtime.** The walkthrough installed the **packaged release
+ZIP exactly as a user receives it** and drove the whole cycle from the extracted
 skill folder alone — plain `python3`, no `uv`, no repository, no source
 reading, following only README + SKILL.md, including the vision leg from an
 actual sheet image.
@@ -90,11 +88,37 @@ evidence photo was stored hashed under `filled-timesheets/`. The first attempt
 at the fake sheet mis-stamped the values into the wrong column, which was a
 flaw in the throwaway stamping script, not the skill.
 
-**Remaining human step before release (AC11 completion):** upload
-`dist/employee-timesheet.zip` once via Customize → Skills → `+` →
-`+ Create skill` → Upload a skill, confirm it is accepted and appears enabled,
-and run one conversational "register / generate / photo / confirm / tally" pass
-in a chat. Nothing below that step is unverified.
+**Leg 2 — send-the-link test (AC8/AC11 assistant relay), PASS.** The branch was
+merged to main and released:
+<https://github.com/DanielKillenberger/employee-timesheet-skill/releases/tag/v0.1.0>
+carries `employee-timesheet.zip` (17 files, `employee-timesheet/` at the ZIP
+root); the release notes' install path matches the README (verified by fetching
+the public release page).
+
+A **fresh agent, restricted to the public github.com URLs only** — no local
+files, no repository checkout — was given nothing but the repo link and the
+bike-shop-owner persona. It produced a complete, correct, jargon-free install
+walkthrough (download the ZIP from Releases, keep it zipped, Settings →
+Capabilities → code execution, Customize → Skills → `+` → Create skill →
+Upload a skill, enable the toggle, first prompt) and cross-checked the README
+against the live Releases page with zero contradictions. This is exactly the
+bar AC8 sets: "an assistant given only the repo link can relay it".
+
+Two nits from that test: README step 1 pointed at `/releases` rather than
+`/releases/latest` (**fixed** — it now deep-links to the newest release), and
+there are no screenshots (noted, judged non-blocking for a text relay).
+
+**Leg 3 — in-account pass: user-owned post-release QA, deliberately deferred.**
+Uploading the ZIP into Daniel's own claude.ai account and running one live
+conversational pass is his to do, by his own choice of test workflow — this
+environment has no signed-in session and a background worker must not change
+someone's account settings unasked. It is recorded as an open, owned QA item,
+not a silent skip: upload via Customize → Skills → `+` → `+ Create skill` →
+Upload a skill, confirm it is accepted and enabled, then run one
+register → generate → photo → confirm → tally conversation. Everything that
+step exercises below the Claude surface — the packaged ZIP layout, the runtime
+in a bare folder, the vision→confirm→tally cycle, and the written guidance an
+assistant relays — is verified above.
 
 Friction found and **fixed** (not documented around):
 - SKILL.md did not say where to run the script from → now states "from the
