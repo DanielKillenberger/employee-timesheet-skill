@@ -37,10 +37,15 @@ SKILL.md, packaging, README rewrite, and the fresh-install usability walkthrough
 
 ## AC11 fresh-install walkthrough (performed 2026-08-13)
 
-The claude.ai upload itself cannot be automated from here, so the walkthrough
-installed the **packaged release ZIP exactly as a user receives it** and then
-drove the whole cycle from the extracted skill folder alone — plain `python3`,
-no `uv`, no repository, no source reading, following only README + SKILL.md.
+**Scope, stated plainly:** the claude.ai upload dialog cannot be driven from
+this environment (it needs a signed-in browser session), so one step of AC11 —
+"the ZIP is accepted by Customize → Skills" — remains a human action and is
+listed in the release checklist below. Everything downstream of it was
+performed for real: the walkthrough installed the **packaged release ZIP
+exactly as a user receives it** and drove the whole cycle from the extracted
+skill folder alone — plain `python3`, no `uv`, no repository, no source
+reading, following only README + SKILL.md, including the vision leg from an
+actual sheet image.
 
 1. `package_skill.py --output-dir dist` → `dist/employee-timesheet.zip`;
    unzipped into an empty folder → single root folder `employee-timesheet/`
@@ -64,7 +69,29 @@ no `uv`, no repository, no source reading, following only README + SKILL.md.
    resolved inside the extracted skill folder; the missing-LibreOffice note
    was reported calmly, not as a failure.
 8. Regular-chat path: `export-data` → bundle → `import-data` into an empty
-   second data folder → worker read back unchanged.
+   second data folder → worker read back unchanged. (`import-data` into the
+   *same* folder is refused without `--force`, which the README now says.)
+
+**Vision leg, done for real (second worker, second month):** a filled-in sheet
+image was produced by stamping slanted hour values onto the generated blank
+March sheet and exporting it to PNG (`sips`), then read back **as an image**
+with no access to the stamping data — the transcription came from looking at
+the picture, exactly as the skill intends. It found: 21 written values, one
+scheduled working day (Mo 16.03.) genuinely empty, one value legible but
+ambiguous (`6` vs `8`, recorded `confidence: low`).
+`validate-extraction` → provisional 159.0 h, identity `matched`, two days
+needing attention (`blank_on_working_day`, `low_confidence`); `confirm` with no
+answers → refused naming 2026-03-16; with the user's two answers → confirmed
+159.0 h, `159.0 h x 28.50 CHF = 4531.50 CHF`; `tally` → German PDF. The
+evidence photo was stored hashed under `filled-timesheets/`. The first attempt
+at the fake sheet mis-stamped the values into the wrong column, which was a
+flaw in the throwaway stamping script, not the skill.
+
+**Remaining human step before release (AC11 completion):** upload
+`dist/employee-timesheet.zip` once via Customize → Skills → `+` →
+`+ Create skill` → Upload a skill, confirm it is accepted and appears enabled,
+and run one conversational "register / generate / photo / confirm / tally" pass
+in a chat. Nothing below that step is unverified.
 
 Friction found and **fixed** (not documented around):
 - SKILL.md did not say where to run the script from → now states "from the

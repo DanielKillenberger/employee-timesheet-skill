@@ -162,11 +162,16 @@ uv run scripts/timesheet.py validate-extraction --worker anna --month 2026-03 \
 uv run scripts/timesheet.py confirm --worker anna --month 2026-03 --set 2026-03-11=6 --json
 uv run scripts/timesheet.py tally --worker anna --month 2026-03 --json
 uv run scripts/timesheet.py export-data --output "$TIMESHEET_DATA_DIR/bundle.json" --json
-uv run scripts/timesheet.py import-data --input "$TIMESHEET_DATA_DIR/bundle.json" --json
+
+# ...later, or on another machine: restore into an empty data folder
+uv run scripts/timesheet.py import-data --input "$TIMESHEET_DATA_DIR/bundle.json" \
+  --data-dir ~/timesheet-data-restored --json
 ```
 
 `export-data` refuses to write inside a git worktree, so the bundle path must
-be outside the clone — as above.
+be outside the clone — as above. `import-data` refuses to overwrite a worker
+that is already registered; restore into an empty data folder, or pass
+`--force` when you deliberately want the bundle to win.
 
 Every subcommand takes `--json` and `--data-dir`, and fails with
 `{"code", "message", "detail"}` on stderr and a non-zero exit code.
