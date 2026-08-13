@@ -474,9 +474,8 @@ def test_a_failing_converter_is_reported_and_never_blocks_the_tally(data_dir, mo
     assert Path(result["files"]["pdf"]).is_file()
 
 
-def test_a_working_converter_produces_a_separate_templated_pdf(data_dir, tmp_path: Path) -> None:
-    """The conversion must not land on the built-in PDF's filename."""
-    make_session(data_dir)
+def fake_converter(tmp_path: Path) -> Path:
+    """A stand-in for LibreOffice that writes `<stem>.pdf` into --outdir."""
     fake = tmp_path / "fake-soffice"
     fake.write_text(
         "#!/bin/sh\n"
@@ -489,6 +488,13 @@ def test_a_working_converter_produces_a_separate_templated_pdf(data_dir, tmp_pat
         encoding="utf-8",
     )
     fake.chmod(0o755)
+    return fake
+
+
+def test_a_working_converter_produces_a_separate_templated_pdf(data_dir, tmp_path: Path) -> None:
+    """The conversion must not land on the built-in PDF's filename."""
+    make_session(data_dir)
+    fake = fake_converter(tmp_path)
 
     result = tally(data_dir, converter=str(fake))
     templated = result["files"]["templated_pdf"]
@@ -561,3 +567,147 @@ def test_a_four_decimal_rate_is_never_displayed_rounded(data_dir) -> None:
     assert cells[7.3333].number_format == "General"
     assert cells[float(result["gross_pay"])].number_format == tl.MONEY_NUMBER_FORMAT
     assert "7.3333" in pdf_text(result["files"]["pdf"])
+
+
+# --------------------------------------------------------------------------
+# the confirmed session is re-derived, not trusted (review finding 1)
+# --------------------------------------------------------------------------
+
+
+def edit_session(data_dir, mutate) -> None:
+    path = data_dir.child("extractions", f"anna-{MONTH}.json")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    mutate(payload)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_a_snapshot_worker_id_cannot_walk_out_of_the_data_folder(data_dir) -> None:
+    """The worker id names the output files, so a doctored one must be refused."""
+    make_session(data_dir)
+
+    def escape(payload):
+        payload["confirmation"]["snapshot"]["worker_id"] = "../../../escaped"
+
+    edit_session(data_dir, escape)
+    with pytest.raises(TimesheetError) as error:
+        tally(data_dir)
+    assert error.value.code == "session_corrupt"
+    assert not list(data_dir.path.parent.glob("*escaped*"))
+
+
+def test_a_total_that_does_not_match_the_days_is_refused(data_dir) -> None:
+    make_session(data_dir)
+
+    def inflate(payload):
+        payload["confirmation"]["total_hours"] = "999.0"
+
+    edit_session(data_dir, inflate)
+    with pytest.raises(TimesheetError) as error:
+        tally(data_dir)
+    assert error.value.code == "session_corrupt"
+    assert "999.0" in error.value.message
+    assert list(data_dir.output_dir.iterdir()) == []
+
+
+def test_a_doctored_receipt_is_refused(data_dir) -> None:
+    make_session(data_dir)
+
+    def overpay(payload):
+        payload["confirmation"]["receipt"]["gross_pay"] = "9999.00"
+
+    edit_session(data_dir, overpay)
+    with pytest.raises(TimesheetError) as error:
+        tally(data_dir)
+    assert error.value.code == "session_corrupt"
+
+
+def test_a_doctored_day_is_refused(data_dir) -> None:
+    make_session(data_dir)
+
+    def add_hours(payload):
+        payload["confirmation"]["days"][0]["hours"] = "12"
+
+    edit_session(data_dir, add_hours)
+    with pytest.raises(TimesheetError) as error:
+        tally(data_dir)
+    assert error.value.code == "session_corrupt"
+
+
+def test_a_short_month_of_confirmed_days_is_refused(data_dir) -> None:
+    make_session(data_dir)
+
+    def truncate(payload):
+        payload["confirmation"]["days"] = payload["confirmation"]["days"][:10]
+
+    edit_session(data_dir, truncate)
+    with pytest.raises(TimesheetError) as error:
+        tally(data_dir)
+    assert error.value.code == "session_corrupt"
+    assert "31 days" in error.value.message
+
+
+def test_an_untouched_session_passes_validation(data_dir) -> None:
+    make_session(data_dir)
+    tl.validate_confirmation(ex.load_session(data_dir, "anna", MONTH))  # no raise
+
+
+# --------------------------------------------------------------------------
+# template print area follows the inserted rows (review finding 2)
+# --------------------------------------------------------------------------
+
+
+def test_a_template_print_area_grows_with_the_day_rows(data_dir, tmp_path: Path) -> None:
+    """A pinned print area would otherwise print only the first day."""
+    make_session(data_dir)
+    template = write_template(tmp_path / "printarea.xlsx")
+    workbook = load_workbook(template)
+    sheet = workbook.active
+    last_row = sheet.max_row
+    sheet.print_area = f"A1:B{last_row}"
+    workbook.save(template)
+
+    result = tally(data_dir, template=str(template))
+    filled = load_workbook(result["files"]["xlsx"]).active
+
+    area = filled.print_area
+    area = area[0] if isinstance(area, list) else area
+    printed_last_row = int(str(area).split("$")[-1])
+    assert printed_last_row == filled.max_row
+    assert printed_last_row >= last_row + 30  # 31 day rows replaced one marker row
+
+
+# --------------------------------------------------------------------------
+# no half-written or stale document sets (review finding 5)
+# --------------------------------------------------------------------------
+
+
+def test_a_broken_template_is_reported_before_anything_is_replaced(data_dir, tmp_path: Path) -> None:
+    make_session(data_dir)
+    good = tally(data_dir)
+    pdf_before = Path(good["files"]["pdf"]).read_bytes()
+    xlsx_before = Path(good["files"]["xlsx"]).read_bytes()
+
+    broken = write_template(tmp_path / "broken.xlsx", omit=tl.PLACEHOLDER_GROSS_PAY)
+    with pytest.raises(TimesheetError):
+        tally(data_dir, template=str(broken), reserve=None)  # --force path
+
+    assert Path(good["files"]["pdf"]).read_bytes() == pdf_before
+    assert Path(good["files"]["xlsx"]).read_bytes() == xlsx_before
+
+
+def test_a_stale_templated_pdf_is_removed_when_conversion_stops_working(
+    data_dir, tmp_path: Path, monkeypatch
+) -> None:
+    """The JSON says templated_pdf: null — no file may contradict it."""
+    make_session(data_dir)
+    fake = fake_converter(tmp_path)
+
+    first = tally(data_dir, converter=str(fake))
+    stale = Path(first["files"]["templated_pdf"])
+    assert stale.is_file()
+
+    monkeypatch.setattr(tl, "find_converter", lambda: None)
+    second = tally(data_dir, reserve=None)
+
+    assert second["files"]["templated_pdf"] is None
+    assert not stale.exists(), "last run's templated PDF still sits next to this run's numbers"

@@ -13,9 +13,14 @@ Two things are load-bearing:
   with the optional rate line) is dimensioned to leave headroom inside the
   printable area. ``tests/test_pdf.py`` asserts the page count with pypdf for
   every month length, so a future layout change that overflows fails loudly.
-* **German text with the built-in fonts.** Helvetica is written with
-  WinAnsiEncoding, which covers the umlauts and ``ß`` the German labels need,
-  so no font file has to be embedded or shipped.
+* **A name is printed correctly or not at all.** The base font is the Unicode
+  TrueType face that ships inside reportlab itself (Bitstream Vera Sans — no
+  extra asset, no extra dependency), which covers the German umlauts plus the
+  Central-European and Balkan letters that turn up constantly in a Swiss
+  workforce (``Łukasz``, ``Šimić``, ``Novák``). Anything the font cannot draw
+  raises :func:`ensure_printable` instead of being written as a black box: a
+  payroll document that quietly misspells the person it is about is worse than
+  one that refuses to be produced.
 
 This module also holds the small PDF primitives (page frame, fonts, colours,
 text escaping) that :mod:`lib.tally` reuses, so the sheet and the final tally
@@ -27,14 +32,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Sequence
 
+import reportlab
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .datadir import atomic_output_file
+from .errors import TimesheetError
 from .layout import MonthLayout
 from .xlsx_sheet import (
     COLUMN_HEADERS,
@@ -45,8 +54,74 @@ from .xlsx_sheet import (
     SHEET_TITLE,
 )
 
-BASE_FONT = "Helvetica"
-BOLD_FONT = "Helvetica-Bold"
+FALLBACK_BASE_FONT = "Helvetica"
+FALLBACK_BOLD_FONT = "Helvetica-Bold"
+
+
+def _register_unicode_fonts() -> tuple[str, str]:
+    """Register reportlab's own Vera faces; fall back to Helvetica if absent.
+
+    The font files live inside the installed reportlab package, so nothing new
+    is shipped or downloaded. If a stripped-down install has no ``fonts``
+    directory, the standard-14 faces still produce a correct document for
+    Latin-1 text — :func:`ensure_printable` then guards the rest.
+    """
+    fonts_dir = Path(reportlab.__file__).resolve().parent / "fonts"
+    try:
+        pdfmetrics.registerFont(TTFont("Vera", str(fonts_dir / "Vera.ttf")))
+        pdfmetrics.registerFont(TTFont("Vera-Bold", str(fonts_dir / "VeraBd.ttf")))
+    except Exception:  # pragma: no cover - only on a stripped reportlab install
+        return FALLBACK_BASE_FONT, FALLBACK_BOLD_FONT
+    pdfmetrics.registerFontFamily("Vera", normal="Vera", bold="Vera-Bold")
+    return "Vera", "Vera-Bold"
+
+
+BASE_FONT, BOLD_FONT = _register_unicode_fonts()
+
+
+def _printable_characters() -> frozenset[str] | None:
+    """The characters the base font can draw, or ``None`` for "cp1252 only"."""
+    font = pdfmetrics.getFont(BASE_FONT)
+    face = getattr(font, "face", None)
+    mapping = getattr(face, "charToGlyph", None)
+    if mapping is None:  # standard-14 fallback: WinAnsi is the limit
+        return None
+    return frozenset(chr(code) for code in mapping)
+
+
+_PRINTABLE: frozenset[str] | None = _printable_characters()
+
+
+def ensure_printable(value: object, *, subject: str) -> str:
+    """Return ``value`` as text, refusing characters the PDF font cannot draw.
+
+    reportlab silently substitutes a black box for a missing glyph, so a name
+    with an unsupported letter would reach the employee misspelled and nobody
+    would know. Refusing names the message instead.
+    """
+    text = "" if value is None else str(value)
+    if _PRINTABLE is None:
+        unprintable = [char for char in text if not _encodable_in_winansi(char)]
+    else:
+        unprintable = [char for char in text if char not in _PRINTABLE and char not in "\n\t "]
+    if unprintable:
+        listed = " ".join(dict.fromkeys(unprintable))
+        raise TimesheetError(
+            "unprintable_text",
+            f"{subject} contains characters the document font cannot print: {listed}. "
+            "Please register a spelling made of Latin letters so the document names the "
+            "person correctly instead of showing empty boxes.",
+            {"subject": subject, "characters": sorted(set(unprintable)), "value": text},
+        )
+    return text
+
+
+def _encodable_in_winansi(char: str) -> bool:
+    try:
+        char.encode("cp1252")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 PAGE_SIZE = A4
 MARGIN = 18 * mm
@@ -99,8 +174,13 @@ def escape(value: object) -> str:
 
 
 def labelled_line(label: str, value: object) -> Paragraph:
-    """One ``Label: value`` line of the identity block, label in bold."""
-    return Paragraph(f"<b>{escape(label)}:</b> {escape(value)}", LINE_STYLE)
+    """One ``Label: value`` line of the identity block, label in bold.
+
+    This is where every user-derived value (name, rate, currency) enters a
+    document, so it is also where the printable-character check belongs.
+    """
+    printable = ensure_printable(value, subject=label)
+    return Paragraph(f"<b>{escape(label)}:</b> {escape(printable)}", LINE_STYLE)
 
 
 def build_document(path: Path | str, *, title: str, author: str = "") -> SimpleDocTemplate:
@@ -184,6 +264,34 @@ def sheet_pdf_filename(layout: MonthLayout) -> str:
     return f"{layout.worker_id}-{layout.month}.pdf"
 
 
+def render_month_pdf(
+    layout: MonthLayout,
+    path: Path,
+    *,
+    include_rate: bool = False,
+    hourly_rate: str | None = None,
+    currency: str | None = None,
+) -> dict[str, Any]:
+    """Render the sheet PDF straight to ``path``, with no atomicity of its own."""
+    story = build_sheet_story(
+        layout,
+        include_rate=include_rate,
+        hourly_rate=hourly_rate,
+        currency=currency,
+    )
+    document = build_document(
+        path,
+        title=f"{SHEET_TITLE} {layout.title} - {ensure_printable(layout.display_name, subject='The name')}",
+    )
+    document.build(story)
+    return {
+        "path": str(path),
+        "rows": len(layout.rows),
+        "working_days": len(layout.working_rows),
+        "off_days": len(layout.off_rows),
+    }
+
+
 def write_month_pdf(
     layout: MonthLayout,
     path: Path,
@@ -193,20 +301,16 @@ def write_month_pdf(
     currency: str | None = None,
 ) -> dict[str, Any]:
     """Write the monthly sheet PDF to ``path`` and describe what was produced."""
-    story = build_sheet_story(
-        layout,
-        include_rate=include_rate,
-        hourly_rate=hourly_rate,
-        currency=currency,
-    )
     # Same discipline as the XLSX writer: build beside the target and rename, so
     # a crash mid-render never leaves a truncated document where a good one was.
     with atomic_output_file(path, suffix=".pdf") as tmp_path:
-        document = build_document(
+        render_month_pdf(
+            layout,
             tmp_path,
-            title=f"{SHEET_TITLE} {layout.title} - {layout.display_name}",
+            include_rate=include_rate,
+            hourly_rate=hourly_rate,
+            currency=currency,
         )
-        document.build(story)
     return {
         "path": str(path),
         "rows": len(layout.rows),

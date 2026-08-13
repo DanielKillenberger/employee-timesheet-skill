@@ -193,6 +193,29 @@ def sheet_filename(layout: MonthLayout) -> str:
     return f"{layout.worker_id}-{layout.month}.xlsx"
 
 
+def render_month_sheet(
+    layout: MonthLayout,
+    path: Path,
+    *,
+    include_rate: bool = False,
+    hourly_rate: str | None = None,
+    currency: str | None = None,
+) -> dict[str, Any]:
+    """Render the sheet straight to ``path``, with no atomicity of its own.
+
+    Callers that publish several documents as one set stage them through
+    :func:`lib.datadir.atomic_output_files` and own the rename themselves.
+    """
+    workbook = build_workbook(
+        layout,
+        include_rate=include_rate,
+        hourly_rate=hourly_rate,
+        currency=currency,
+    )
+    workbook.save(str(path))
+    return describe_sheet(layout, path)
+
+
 def write_month_sheet(
     layout: MonthLayout,
     path: Path,
@@ -202,16 +225,20 @@ def write_month_sheet(
     currency: str | None = None,
 ) -> dict[str, Any]:
     """Write the monthly sheet to ``path`` and describe what was produced."""
-    workbook = build_workbook(
-        layout,
-        include_rate=include_rate,
-        hourly_rate=hourly_rate,
-        currency=currency,
-    )
     # Write beside the target and rename: a half-written save must never replace
     # a sheet somebody already filled in, and the file stays owner-only.
     with atomic_output_file(path, suffix=".xlsx") as tmp_path:
-        workbook.save(str(tmp_path))
+        render_month_sheet(
+            layout,
+            tmp_path,
+            include_rate=include_rate,
+            hourly_rate=hourly_rate,
+            currency=currency,
+        )
+    return describe_sheet(layout, path)
+
+
+def describe_sheet(layout: MonthLayout, path: Path) -> dict[str, Any]:
     return {
         "path": str(path),
         "rows": len(layout.rows),

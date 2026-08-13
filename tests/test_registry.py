@@ -576,3 +576,30 @@ def test_cli_rejects_malformed_override_argument(tmp_path: Path, capsys) -> None
     )
     assert exit_code == 1
     assert json.loads(capsys.readouterr().err)["code"] == "invalid_overrides"
+
+
+def test_a_currency_label_longer_than_the_limit_is_refused(tmp_path) -> None:
+    """An unbounded label would push the one-page A4 sheet onto a second page."""
+    from lib.registry import MAX_CURRENCY_LENGTH
+
+    data_dir = resolve_data_dir(str(tmp_path / "data"))
+    reg.register_worker(
+        data_dir,
+        worker_id="anna",
+        display_name="Anna Muster",
+        weekdays="mon",
+        rate="7.50",
+        currency="C" * MAX_CURRENCY_LENGTH,
+    )  # the limit itself is fine
+
+    with pytest.raises(TimesheetError) as error:
+        reg.register_worker(
+            data_dir,
+            worker_id="bea",
+            display_name="Bea Muster",
+            weekdays="mon",
+            rate="7.50",
+            currency="C" * (MAX_CURRENCY_LENGTH + 1),
+        )
+    assert error.value.code == "invalid_currency"
+    assert str(MAX_CURRENCY_LENGTH) in error.value.message

@@ -19,6 +19,7 @@ from pypdf import PdfReader
 import timesheet
 from lib import registry as reg
 from lib.datadir import resolve_data_dir
+from lib.errors import TimesheetError
 from lib.layout import build_month_layout
 from lib.pdf_sheet import (
     MARGIN,
@@ -229,19 +230,90 @@ def test_generate_refuses_to_overwrite_either_document(data_dir) -> None:
     assert forced["returncode"] == 0
 
 
-def test_a_failed_pdf_leaves_no_empty_claim_behind(data_dir, monkeypatch) -> None:
-    """The XLSX claim and the PDF claim are both released when rendering fails."""
+def failing_generate(data_dir, monkeypatch, *extra_args: str) -> None:
+    """Run `generate` with a PDF renderer that always explodes."""
     import timesheet as cli
 
     def boom(*args, **kwargs):
         raise RuntimeError("renderer exploded")
 
-    monkeypatch.setattr(cli, "write_month_pdf", boom)
-    parser = cli.build_parser()
-    args = parser.parse_args(
-        ["generate", "--worker", "anna", "--month", "2027-03", "--data-dir", str(data_dir.path)]
+    monkeypatch.setattr(cli, "render_month_pdf", boom)
+    args = cli.build_parser().parse_args(
+        [
+            "generate",
+            "--worker",
+            "anna",
+            "--month",
+            "2027-03",
+            "--data-dir",
+            str(data_dir.path),
+            *extra_args,
+        ]
     )
     with pytest.raises(RuntimeError):
         cli.cmd_generate(args)
 
+
+def test_a_failed_pdf_leaves_no_empty_claim_behind(data_dir, monkeypatch) -> None:
+    """The XLSX claim and the PDF claim are both released when rendering fails."""
+    failing_generate(data_dir, monkeypatch)
     assert list(data_dir.output_dir.iterdir()) == []
+
+
+def test_a_failed_pdf_never_leaves_a_fresh_xlsx_beside_a_stale_pdf(data_dir, monkeypatch) -> None:
+    """--force must not publish half of a document set (review finding 5)."""
+    first = run_cli("generate", "--worker", "anna", "--month", "2027-03", data_dir=data_dir)
+    xlsx = Path(first["payload"]["files"]["xlsx"])
+    pdf = Path(first["payload"]["files"]["pdf"])
+    before_xlsx, before_pdf = xlsx.read_bytes(), pdf.read_bytes()
+
+    failing_generate(data_dir, monkeypatch, "--force")
+
+    assert xlsx.read_bytes() == before_xlsx, "the XLSX was replaced although the PDF failed"
+    assert pdf.read_bytes() == before_pdf
+    assert sorted(item.name for item in data_dir.output_dir.iterdir()) == sorted(
+        [xlsx.name, pdf.name]
+    )
+
+
+# --------------------------------------------------------------------------
+# printable characters — a name is printed correctly or not at all
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", ["Łukasz Nowak", "Ivan Šimić", "Jozef Novák", "Anna Müller"])
+def test_central_european_names_are_printed_faithfully(tmp_path: Path, name: str) -> None:
+    path, _ = written_pdf(tmp_path, worker(display_name=name))
+    text = page_text(path)
+    assert name in text
+    assert "■" not in text  # never a black box
+
+
+@pytest.mark.parametrize("name", ["李明", "Мария Иванова"])
+def test_a_name_the_font_cannot_draw_is_refused_not_mangled(tmp_path: Path, name: str) -> None:
+    """Silently printing boxes over someone's name on a pay document is worse."""
+    from lib.pdf_sheet import ensure_printable
+
+    with pytest.raises(TimesheetError) as error:
+        written_pdf(tmp_path, worker(display_name=name))
+    assert error.value.code == "unprintable_text"
+    assert name[0] in error.value.message
+
+    # ...and nothing was left behind by the refusal.
+    assert not list(tmp_path.glob("*.pdf"))
+    assert ensure_printable("Anna Müller", subject="The name") == "Anna Müller"
+
+
+def test_a_maximum_length_name_and_currency_still_fit_one_page(tmp_path: Path) -> None:
+    """The one-page guarantee has to hold for the longest registrable input."""
+    from lib.registry import MAX_CURRENCY_LENGTH, MAX_NAME_LENGTH
+
+    path, _ = written_pdf(
+        tmp_path,
+        worker(display_name="Ä" * MAX_NAME_LENGTH),
+        month="2027-03",
+        include_rate=True,
+        hourly_rate="99999.9999",
+        currency="C" * MAX_CURRENCY_LENGTH,
+    )
+    assert len(PdfReader(str(path)).pages) == 1

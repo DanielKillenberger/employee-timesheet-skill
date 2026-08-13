@@ -45,6 +45,11 @@ BUNDLE_KIND = "employee-timesheet-registry"
 DEFAULT_CURRENCY = "CHF"
 
 MAX_NAME_LENGTH = 120
+#: The currency label is free text, but it is printed on a fixed-size page next
+#: to every amount. Without a bound, a pasted essay would push the one-page A4
+#: sheet (spec R2) onto a second page — so the limit is generous enough for
+#: "Swiss francs (gross)" and small enough to keep the layout guarantee.
+MAX_CURRENCY_LENGTH = 40
 
 # Control characters cannot be stored in a spreadsheet cell (XML forbids them),
 # so they are refused at the door instead of blowing up in the renderer.
@@ -110,6 +115,13 @@ def validate_currency(raw: object | None) -> str:
     label = raw.strip()
     if not label:
         raise TimesheetError("invalid_currency", "The currency label must not be empty.", {"value": raw})
+    if len(label) > MAX_CURRENCY_LENGTH:
+        raise TimesheetError(
+            "invalid_currency",
+            f"The currency label is too long (maximum {MAX_CURRENCY_LENGTH} characters). "
+            "It is printed next to every amount, so it has to be short, for example 'CHF'.",
+            {"length": len(label)},
+        )
     _reject_control_characters(label, code="invalid_currency", subject="The currency label")
     return label
 

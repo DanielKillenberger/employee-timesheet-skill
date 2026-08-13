@@ -169,6 +169,12 @@ shown with all four decimals (the two-decimal cell format is applied only to the
 gross pay, which is quantized to 0.01 by construction, so no digit can be hidden);
 fits one portrait A4 page at 100 %.
 
+Re-checked after the review round that replaced the PDF base font: with the
+worker registered as `Anna Šimić`, both documents print the name correctly
+(`Š` and `ć` are outside WinAnsi and were black boxes with the standard-14
+Helvetica face). Layout, greys, totals and pagination are unchanged by the font
+swap.
+
 No LibreOffice was installed in the build environment, so the optional templated
 PDF was not produced — the run reported that in plain language and the mandatory
 built-in PDF was unaffected, which is exactly the contract in R6.

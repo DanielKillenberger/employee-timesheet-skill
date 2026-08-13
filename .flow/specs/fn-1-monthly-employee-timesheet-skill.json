@@ -11,7 +11,8 @@
   "impl_review_rounds": {
     "fn-1-monthly-employee-timesheet-skill.1": 0,
     "fn-1-monthly-employee-timesheet-skill.2": 0,
-    "fn-1-monthly-employee-timesheet-skill.3": 0
+    "fn-1-monthly-employee-timesheet-skill.3": 0,
+    "fn-1-monthly-employee-timesheet-skill.4": 1
   },
   "next_task": 1,
   "plan_review_rounds": 0,
@@ -367,13 +368,87 @@
       "task": "fn-1-monthly-employee-timesheet-skill.3",
       "timestamp": "2026-08-13T20:00:11.429186Z",
       "verdict": "SHIP"
+    },
+    {
+      "artifact_sha256": "724edae11745d953586fa118401308a92151965f105960fd88f289bc816d084b",
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "finalized": {
+        "digest": "complete",
+        "receipt": "complete",
+        "status": "not_applicable"
+      },
+      "findings_digest": {
+        "backend": "codex",
+        "digest_truncated": false,
+        "items": [
+          {
+            "chainRoot": "finding-cc204ae89b2a6ab92616fe33bd900121",
+            "classification": "introduced",
+            "findingId": "finding-cc204ae89b2a6ab92616fe33bd900121",
+            "firstSeenThisRound": true,
+            "severity": "P1",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-4bcb5b476ad785e092dd3da794a10625",
+            "classification": "introduced",
+            "findingId": "finding-4bcb5b476ad785e092dd3da794a10625",
+            "firstSeenThisRound": true,
+            "severity": "P1",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-7e3e1bf6c3234c82245f87af48821694",
+            "classification": "introduced",
+            "findingId": "finding-7e3e1bf6c3234c82245f87af48821694",
+            "firstSeenThisRound": true,
+            "severity": "P1",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-0debd5ff42e36d8a8ec64e6d61c8390a",
+            "classification": "introduced",
+            "findingId": "finding-0debd5ff42e36d8a8ec64e6d61c8390a",
+            "firstSeenThisRound": true,
+            "severity": "P2",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-768f0cc98699824260b1b88a9c1c1fa7",
+            "classification": "introduced",
+            "findingId": "finding-768f0cc98699824260b1b88a9c1c1fa7",
+            "firstSeenThisRound": true,
+            "severity": "P2",
+            "status": "open"
+          }
+        ],
+        "reviewKind": "implementation"
+      },
+      "forced": false,
+      "hash_epoch": 0,
+      "head_sha": "b34053b90f0155c59a10eb6af27882c9e70bf5ee",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "9988beb5b4de2eaf049ceb6da00bbf93fe3db4472b8dd43cfa848f188455f1e0",
+      "reservation_id": "1c1c9bcc5cc648db92c3dcb8b3a78916",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.4",
+      "superseded_by": null,
+      "task": "fn-1-monthly-employee-timesheet-skill.4",
+      "timestamp": "2026-08-13T20:21:16.892852Z",
+      "verdict": "NEEDS_WORK"
     }
   ],
+  "review_hash_epoch": {},
   "review_pending_rounds": {},
+  "review_reservations": {},
   "review_transport_failures": {
     "impl:fn-1-monthly-employee-timesheet-skill.1": 0,
     "impl:fn-1-monthly-employee-timesheet-skill.2": 0,
     "impl:fn-1-monthly-employee-timesheet-skill.3": 0,
+    "impl:fn-1-monthly-employee-timesheet-skill.4": 0,
     "plan": 0
   },
   "spec_path": ".flow/specs/fn-1-monthly-employee-timesheet-skill.md",
@@ -390,5 +465,5 @@
     "mergeBaseTracker": null,
     "url": null
   },
-  "updated_at": "2026-08-13T20:00:11.429319Z"
+  "updated_at": "2026-08-13T20:21:16.899545Z"
 }

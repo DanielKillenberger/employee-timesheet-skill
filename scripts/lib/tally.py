@@ -41,21 +41,25 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.utils.cell import range_boundaries
 from openpyxl.worksheet.worksheet import Worksheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, Spacer, Table
 
-from .datadir import DataDir, atomic_output_file
+from .datadir import DataDir, atomic_output_file, atomic_output_files, safe_child
 from .errors import TimesheetError
-from .extraction import STATUS_CONFIRMED, load_session
+from .extraction import STATUS_CONFIRMED, load_session, month_dates
 from .layout import validate_month
-from .money import parse_hours
+from .money import canonical_decimal_string, parse_hours
+from .pay import ZERO, build_receipt
 from .pdf_sheet import (
     NOTE_STYLE,
     TABLE_HEADER_HEIGHT,
     TABLE_ROW_HEIGHT,
     TITLE_STYLE,
     build_document,
+    ensure_printable,
     escape,
     labelled_line,
     table_style,
@@ -139,6 +143,79 @@ SOFFICE_TIMEOUT_SECONDS = 180
 # --------------------------------------------------------------------------
 
 
+def _corrupt_confirmation(session: Mapping[str, Any], problem: str) -> TimesheetError:
+    return TimesheetError(
+        "session_corrupt",
+        f"The confirmed hours for {session.get('month_title', session.get('month'))} cannot be used "
+        f"because {problem}. Nothing was written. Run 'validate-extraction' with --overwrite and "
+        "confirm the month again.",
+        {"worker_id": session.get("worker_id"), "month": session.get("month"), "problem": problem},
+    )
+
+
+def validate_confirmation(session: Mapping[str, Any]) -> None:
+    """Re-derive the confirmed result and refuse it if it does not add up.
+
+    ``load_session`` checks that a confirmation has the right *shape*; that is
+    not enough for the one file in this skill that becomes money. A session
+    file is plain JSON in the user's own folder, so it can be edited — by a
+    person, a sync conflict, a half-finished write from another tool — and
+    every field the tally prints would otherwise be taken on faith.
+
+    So everything is recomputed from the frozen per-day hours: the day set must
+    be exactly the month's calendar, the total must be the exact sum, the
+    receipt must be the receipt those numbers produce, and the snapshot must
+    belong to the worker whose session this is. Anything else is a refusal
+    naming the problem, never a document.
+    """
+    confirmation = session["confirmation"]
+    snapshot = confirmation["snapshot"]
+    month = session["month"]
+
+    if snapshot["worker_id"] != session["worker_id"]:
+        # Load-bearing: the worker id also names the output files.
+        raise _corrupt_confirmation(
+            session,
+            f"it was frozen for worker '{snapshot['worker_id']}' but stored for "
+            f"'{session['worker_id']}'",
+        )
+
+    days = confirmation["days"]
+    expected_dates = month_dates(month)
+    dates = [day.get("date") if isinstance(day, Mapping) else None for day in days]
+    if dates != expected_dates:
+        raise _corrupt_confirmation(
+            session, f"it does not hold exactly the {len(expected_dates)} days of {month}"
+        )
+
+    total = ZERO
+    for day in days:
+        if not isinstance(day.get("label"), str) or not isinstance(day.get("working"), bool):
+            raise _corrupt_confirmation(session, f"the entry for {day.get('date')} is incomplete")
+        try:
+            total += parse_hours(day.get("hours"))
+        except TimesheetError as exc:
+            raise _corrupt_confirmation(
+                session, f"the hours for {day.get('date')} are not a valid number"
+            ) from exc
+
+    if canonical_decimal_string(total) != confirmation["total_hours"]:
+        raise _corrupt_confirmation(
+            session,
+            f"its total of {confirmation['total_hours']} h does not match the "
+            f"{canonical_decimal_string(total)} h in the daily entries",
+        )
+
+    try:
+        expected_receipt = build_receipt(total, snapshot["hourly_rate"], snapshot["currency"])
+    except TimesheetError as exc:
+        raise _corrupt_confirmation(session, "its stored hourly rate is not a valid amount") from exc
+    if confirmation["receipt"] != expected_receipt:
+        raise _corrupt_confirmation(
+            session, "the stored pay calculation does not match the confirmed hours and rate"
+        )
+
+
 def load_confirmed_session(data_dir: DataDir, worker_id: str, month: str) -> dict[str, Any]:
     """Load the session for ``worker_id``/``month``, refusing unconfirmed hours.
 
@@ -158,6 +235,7 @@ def load_confirmed_session(data_dir: DataDir, worker_id: str, month: str) -> dic
                 "status": session["status"],
             },
         )
+    validate_confirmation(session)
     return session
 
 
@@ -174,7 +252,10 @@ def tally_context(session: Mapping[str, Any], *, generated_on: date | None = Non
     generated = generated_on or date.today()
 
     return {
-        "worker_id": snapshot["worker_id"],
+        # The session's own id, which resolved the session path and therefore
+        # already passed the data-folder containment check. The snapshot's copy
+        # is asserted equal to it in validate_confirmation.
+        "worker_id": session["worker_id"],
         "worker_name": snapshot["display_name"],
         "month": session["month"],
         "month_title": session.get("month_title", session["month"]),
@@ -271,15 +352,24 @@ def templated_pdf_filename(worker_id: str, month: str) -> str:
     return f"{worker_id}-{month}-abrechnung-vorlage.pdf"
 
 
-def write_tally_pdf(context: Mapping[str, Any], path: Path) -> Path:
-    """Render the mandatory built-in tally PDF (R5) to ``path``."""
+def render_tally_pdf(context: Mapping[str, Any], path: Path) -> Path:
+    """Render the mandatory built-in tally PDF (R5) straight to ``path``."""
     story = build_tally_story(context)
+    document = build_document(
+        path,
+        title=(
+            f"{TALLY_TITLE} {context['month_title']} - "
+            f"{ensure_printable(context['worker_name'], subject='The name')}"
+        ),
+    )
+    document.build(story)
+    return path
+
+
+def write_tally_pdf(context: Mapping[str, Any], path: Path) -> Path:
+    """Write the built-in tally PDF to ``path``, replacing it atomically."""
     with atomic_output_file(path, suffix=".pdf") as tmp_path:
-        document = build_document(
-            tmp_path,
-            title=f"{TALLY_TITLE} {context['month_title']} - {context['worker_name']}",
-        )
-        document.build(story)
+        render_tally_pdf(context, tmp_path)
     return path
 
 
@@ -431,6 +521,46 @@ def _shift_geometry_below(
         )
 
 
+def _shift_print_area(worksheet: Worksheet, marker_row: int, offset: int) -> None:
+    """Grow the print area to cover the rows the day table expanded into.
+
+    A template that pins its print area to the original block would otherwise
+    print only the first day: the rows move down, the print area does not, and
+    the LibreOffice PDF quietly ends mid-table. A boundary *below* the marker
+    row moves with the content it referred to; an end boundary *at* the marker
+    row grows, because that one row became many.
+    """
+    if offset <= 0:
+        return
+    area = worksheet.print_area
+    if not area:
+        return
+    ranges = area if isinstance(area, list) else [area]
+
+    shifted: list[str] = []
+    for entry in ranges:
+        sheet_prefix, _, cells = str(entry).rpartition("!")
+        try:
+            min_col, min_row, max_col, max_row = range_boundaries(cells.replace("$", ""))
+        except (ValueError, TypeError):  # pragma: no cover - unparseable, leave as is
+            shifted.append(str(entry))
+            continue
+        if min_row is None or max_row is None:  # a whole-column range needs no shift
+            shifted.append(str(entry))
+            continue
+        if min_row > marker_row:
+            min_row += offset
+        if max_row >= marker_row:
+            max_row += offset
+        moved = (
+            f"${get_column_letter(min_col)}${min_row}:"
+            f"${get_column_letter(max_col)}${max_row}"
+        )
+        shifted.append(f"{sheet_prefix}!{moved}" if sheet_prefix else moved)
+
+    worksheet.print_area = shifted
+
+
 def _expand_day_rows(workbook: Workbook, days: list[Mapping[str, Any]]) -> None:
     """Clone the ``{{day_rows}}`` marker row once per confirmed day."""
     worksheet, marker = _marker_cell(workbook)
@@ -444,6 +574,7 @@ def _expand_day_rows(workbook: Workbook, days: list[Mapping[str, Any]]) -> None:
         merges = _unmerge_below(worksheet, marker_row + 1)
         worksheet.insert_rows(marker_row + 1, extra)
         _shift_geometry_below(worksheet, marker_row + 1, extra, merges)
+        _shift_print_area(worksheet, marker_row, extra)
         for offset in range(1, extra + 1):
             for cell in worksheet[marker_row]:
                 target = worksheet.cell(row=marker_row + offset, column=cell.column)
@@ -493,10 +624,20 @@ def _substitute_scalars(workbook: Workbook, context: Mapping[str, Any]) -> None:
                 write_text_cell(cell, replaced)
 
 
-def fill_template(template_path: Path, context: Mapping[str, Any]) -> Workbook:
-    """Return the template workbook with every placeholder resolved."""
+def check_template(template_path: Path) -> Workbook:
+    """Load a template and verify its placeholders, writing nothing.
+
+    Run before any document is published, so the common template mistakes are
+    reported while the previous month's tally is still intact on disk.
+    """
     workbook = _load_template(template_path)
     _require_placeholders(workbook, template_path)
+    return workbook
+
+
+def fill_template(template_path: Path, context: Mapping[str, Any]) -> Workbook:
+    """Return the template workbook with every placeholder resolved."""
+    workbook = check_template(template_path)
     _expand_day_rows(workbook, list(context["days"]))
     _substitute_scalars(workbook, context)
     return workbook
@@ -586,10 +727,19 @@ def generate_tally(
     context = tally_context(session, generated_on=generated_on)
     template_path, template_source = resolve_template(data_dir, template)
 
+    # Every output name is resolved through the containment check, not merely
+    # joined: the filename carries a worker id, and a worker id must never be
+    # able to walk out of the data folder.
     output_dir = data_dir.output_dir
-    pdf_path = output_dir / tally_pdf_filename(context["worker_id"], context["month"])
-    xlsx_path = output_dir / tally_xlsx_filename(context["worker_id"], context["month"])
-    templated_pdf_path = output_dir / templated_pdf_filename(context["worker_id"], context["month"])
+    pdf_path = safe_child(output_dir, tally_pdf_filename(context["worker_id"], context["month"]))
+    xlsx_path = safe_child(output_dir, tally_xlsx_filename(context["worker_id"], context["month"]))
+    templated_pdf_path = safe_child(
+        output_dir, templated_pdf_filename(context["worker_id"], context["month"])
+    )
+
+    # Fail on a broken template before anything is published, so a typo in a
+    # placeholder cannot leave a fresh PDF beside last month's workbook.
+    check_template(template_path)
 
     claimed: list[Path] = []
     if reserve is not None:
@@ -608,10 +758,13 @@ def generate_tally(
 
     notes: list[str] = []
     try:
-        # The mandatory document first: whatever the template does afterwards,
-        # the employee's PDF exists.
-        write_tally_pdf(context, pdf_path)
-        write_tally_xlsx(template_path, context, xlsx_path)
+        # Both documents are rendered before either is published: a tally whose
+        # PDF and workbook disagree about the month would be worse than no
+        # tally at all. The PDF is rendered first so the mandatory document is
+        # never the one that gets dropped for a template problem.
+        with atomic_output_files([pdf_path, xlsx_path]) as (staged_pdf, staged_xlsx):
+            render_tally_pdf(context, staged_pdf)
+            fill_template(template_path, context).save(str(staged_xlsx))
     except BaseException:
         for target in claimed:
             target.unlink(missing_ok=True)
@@ -620,9 +773,10 @@ def generate_tally(
     note = convert_to_pdf(xlsx_path, templated_pdf_path, converter=converter)
     if note:
         notes.append(note)
-        if templated_pdf_path in claimed:
-            # Drop the empty claim: no converter means no file, not a 0-byte one.
-            templated_pdf_path.unlink(missing_ok=True)
+        # No templated PDF this run means there must be none on disk: an empty
+        # claim, or last run's copy with last run's numbers, would both be read
+        # as this month's document.
+        templated_pdf_path.unlink(missing_ok=True)
 
     files: dict[str, str | None] = {
         "pdf": str(pdf_path),

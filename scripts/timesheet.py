@@ -31,6 +31,7 @@ from lib import extraction as ex  # noqa: E402
 from lib import registry as reg  # noqa: E402
 from lib.datadir import (  # noqa: E402
     DataDir,
+    atomic_output_files,
     file_lock,
     find_git_worktree,
     read_json,
@@ -41,9 +42,9 @@ from lib.datadir import (  # noqa: E402
 from lib.errors import TimesheetError  # noqa: E402
 from lib.layout import build_month_layout  # noqa: E402
 from lib.money import canonical_decimal_string  # noqa: E402
-from lib.pdf_sheet import sheet_pdf_filename, write_month_pdf  # noqa: E402
+from lib.pdf_sheet import render_month_pdf, sheet_pdf_filename  # noqa: E402
 from lib.tally import generate_tally  # noqa: E402
-from lib.xlsx_sheet import sheet_filename, write_month_sheet  # noqa: E402
+from lib.xlsx_sheet import render_month_sheet, sheet_filename  # noqa: E402
 
 EXIT_ERROR = 1
 
@@ -165,20 +166,23 @@ def cmd_generate(args: argparse.Namespace) -> dict[str, Any]:
                 target.unlink(missing_ok=True)
             raise
     try:
-        written = write_month_sheet(
-            layout,
-            xlsx_target,
-            include_rate=args.include_rate,
-            hourly_rate=record["hourly_rate"],
-            currency=record["currency"],
-        )
-        write_month_pdf(
-            layout,
-            pdf_target,
-            include_rate=args.include_rate,
-            hourly_rate=record["hourly_rate"],
-            currency=record["currency"],
-        )
+        # Both documents are rendered before either replaces its target, so a
+        # failure never leaves a fresh spreadsheet next to last month's PDF.
+        with atomic_output_files([xlsx_target, pdf_target]) as (staged_xlsx, staged_pdf):
+            written = render_month_sheet(
+                layout,
+                staged_xlsx,
+                include_rate=args.include_rate,
+                hourly_rate=record["hourly_rate"],
+                currency=record["currency"],
+            )
+            render_month_pdf(
+                layout,
+                staged_pdf,
+                include_rate=args.include_rate,
+                hourly_rate=record["hourly_rate"],
+                currency=record["currency"],
+            )
     except BaseException:
         for target in claimed:
             target.unlink(missing_ok=True)  # drop the empty claims
@@ -195,7 +199,8 @@ def cmd_generate(args: argparse.Namespace) -> dict[str, Any]:
         "worker": {"id": layout.worker_id, "display_name": layout.display_name},
         "month": layout.month,
         "month_title": layout.title,
-        "files": {"xlsx": written["path"], "pdf": str(pdf_target)},
+        # The published targets, not the staging paths the renderers saw.
+        "files": {"xlsx": str(xlsx_target), "pdf": str(pdf_target)},
         "days": written["rows"],
         "working_days": written["working_days"],
         "off_days": written["off_days"],

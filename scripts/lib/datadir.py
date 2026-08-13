@@ -344,6 +344,47 @@ def atomic_output_file(path: Path, *, suffix: str = "") -> Iterator[Path]:
         raise
 
 
+@contextmanager
+def atomic_output_files(paths: "list[Path]") -> Iterator[list[Path]]:
+    """Yield one temp path per target; publish them all, or publish none.
+
+    A command that writes two documents from one calculation — the monthly
+    sheet's XLSX and PDF, the tally's PDF and workbook — must never leave one
+    of them refreshed beside a stale copy of the other. Somebody would then
+    hand out a January PDF with February's spreadsheet and never notice.
+
+    Every document is rendered to a temp file next to its target first; only
+    when they have all been rendered are the targets replaced. A failure at any
+    point removes the temp files and leaves every target exactly as it was.
+    """
+    staged: list[tuple[Path, Path]] = []
+    try:
+        for path in paths:
+            if not path.parent.is_dir():
+                raise TimesheetError(
+                    "output_dir_missing",
+                    f"The folder '{path.parent}' does not exist, so '{path.name}' could not be written.",
+                    {"path": str(path)},
+                )
+            fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=path.suffix)
+            os.close(fd)
+            tmp_path = Path(tmp_name)
+            try:
+                os.chmod(tmp_path, FILE_MODE)
+            except (NotImplementedError, OSError):  # pragma: no cover
+                pass
+            staged.append((path, tmp_path))
+
+        yield [tmp for _, tmp in staged]
+
+        for path, tmp_path in staged:
+            os.replace(tmp_path, path)
+    except BaseException:
+        for _, tmp_path in staged:
+            tmp_path.unlink(missing_ok=True)
+        raise
+
+
 def read_json(path: Path) -> Any:
     try:
         with path.open("r", encoding="utf-8") as handle:
