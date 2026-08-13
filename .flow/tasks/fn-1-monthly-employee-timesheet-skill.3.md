@@ -37,9 +37,8 @@ Deterministic validation of transcribed entries, simple confirmation state, and 
 - [ ] Snapshot immutability test
 - [ ] Session persistence + overwrite tests
 ## Done summary
-TBD
-
+Deterministic extraction validation, confirmation state and pay arithmetic: `lib/extraction.py` strictly validates the transcribed-entries document (hard rejection of duplicate, impossible and out-of-month dates, negative/over-precise/>24-hour values), flags every uncertain day (unreadable, blank working day, >12 h implausible, low confidence), computes the structured identity match, and keeps a resumable per-worker/month session holding every calendar date plus SHA-256-hashed evidence photos; `lib/pay.py` sums hours exactly and rounds gross pay once with ROUND_HALF_UP into a transparent receipt. `confirm` refuses while any working day is blank, any day is unreadable, any flag is unaddressed or the name on the sheet does not match, and freezes a worker snapshot on success — sessions are re-validated and their flags recomputed on load, so a truncated or hand-edited file can never confirm a short month or pay hidden hours. 121 new tests (328 total); reviewed by Codex (SHIP after two fix rounds).
 ## Evidence
-- Commits:
-- Tests:
+- Commits: 0631873fe447371f0581def0cbcc8c836fddef90, f1981a0124b0d484a5c1b10cd12798b484ed3b27, e8eca8ae72e3d3f0c8d1704f20444a355925bd27
+- Tests: uv run pytest (328 passed), uv run scripts/timesheet.py --help, .flow/bin/flowctl validate --all --json (0 errors), GATE_SKIPPED:unittest:green-receipt 536dc47f - baseline reused from prior post-gate pass
 - PRs:
