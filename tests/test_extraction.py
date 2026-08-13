@@ -158,6 +158,25 @@ def test_document_worker_and_month_must_match_the_request(data_dir) -> None:
     assert error_code(parse, {"schema_version": 1, "month": "2026-09", "entries": []}, data_dir) == "month_mismatch"
 
 
+@pytest.mark.parametrize(
+    "entry_json",
+    [
+        {"date": "2026-08-03", "kind": "blank", "value": None, "confidence": "high"},
+        {"date": "2026-08-03", "kind": "unreadable", "value": None, "confidence": "low"},
+        {"date": "2026-08-03", "kind": "value", "value": None, "confidence": "high"},
+    ],
+)
+def test_an_explicit_null_value_is_refused_rather_than_read_as_absent(data_dir, entry_json) -> None:
+    """'value must be omitted' means omitted — null states two things at once."""
+    assert error_code(parse, {"schema_version": 1, "entries": [entry_json]}, data_dir) == "invalid_entries"
+
+
+@pytest.mark.parametrize("kind", ["unreadable", "not_provided"])
+def test_an_explicit_null_observed_name_value_is_refused(data_dir, kind) -> None:
+    doc = document([], observed_name={"kind": kind, "value": None})
+    assert error_code(parse, doc, data_dir) == "invalid_observed_name"
+
+
 def test_a_written_zero_is_recorded_as_zero_whichever_kind_was_used(data_dir) -> None:
     parsed = parse(document([entry(3, "value", "0"), entry(4, "zero")]), data_dir)
     assert parsed["entries"]["2026-08-03"] == {"kind": "zero", "value": "0", "confidence": "high", "note": None}
@@ -420,6 +439,32 @@ def test_leap_february_confirms_exactly_and_rounds_once(data_dir) -> None:
     assert confirmation["receipt"]["rounding_applied"] is True
 
 
+def test_a_renamed_worker_makes_the_identity_check_start_over(data_dir) -> None:
+    """The name check is worthless unless it is made against the name being frozen."""
+    session = session_for(fixture("entries-clean"), data_dir)
+    assert session["identity"]["status"] == ex.IDENTITY_MATCHED
+
+    reg.register_worker(data_dir, worker_id="anna", display_name="Bea Beispiel", rate="99.00")
+
+    assert error_code(confirm, session, data_dir) == "identity_unconfirmed"
+    assert session["identity"]["status"] == ex.IDENTITY_MISMATCH
+    assert session["identity"]["registered_name"] == "Bea Beispiel"
+
+    confirmation = confirm(session, data_dir, accept_identity=True)
+    assert confirmation["snapshot"]["display_name"] == "Bea Beispiel"
+
+
+def test_a_rename_withdraws_an_earlier_identity_acceptance(data_dir) -> None:
+    session = session_for(fixture("entries-name-mismatch"), data_dir)
+    session["identity"]["accepted"] = True
+    session["identity"]["accepted_at"] = "2026-08-13T00:00:00Z"
+
+    reg.register_worker(data_dir, worker_id="anna", display_name="Carla Anders")
+
+    assert error_code(confirm, session, data_dir) == "identity_unconfirmed"
+    assert session["identity"]["accepted"] is False and session["identity"]["accepted_at"] is None
+
+
 def test_snapshot_survives_a_later_re_registration(data_dir) -> None:
     """Session-layer immutability (plan decision 1); the tally is task .4's job."""
     session = session_for(fixture("entries-clean"), data_dir)
@@ -461,6 +506,66 @@ def test_a_session_written_by_another_version_is_refused(data_dir) -> None:
 
 def test_session_path_stays_inside_the_data_folder(data_dir) -> None:
     assert error_code(ex.session_path, data_dir, "../escape", MONTH) == "unsafe_path"
+
+
+def write_session_file(data_dir, payload: dict) -> None:
+    path = ex.session_path(data_dir, "anna", MONTH)
+    data_dir.extractions_dir
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_a_truncated_session_can_never_confirm_as_a_short_month(data_dir) -> None:
+    """Missing days cannot be flagged as blank, so a lost tail must be refused."""
+    session = session_for(fixture("entries-clean"), data_dir)
+    session["days"] = session["days"][:1]
+    write_session_file(data_dir, session)
+    assert error_code(ex.load_session, data_dir, "anna", MONTH) == "corrupt_session"
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        lambda s: s.update(worker_id="bea"),
+        lambda s: s.update(month="2026-09"),
+        lambda s: s.update(status="nearly"),
+        lambda s: s.update(identity={"status": "matched"}),
+        lambda s: s["days"].append(dict(s["days"][0])),
+        lambda s: s["days"][0].pop("flags"),
+        lambda s: s["days"][0].update(kind="maybe"),
+        lambda s: s["days"][0].update(source="guesswork"),
+        lambda s: s["days"][0].update(working="yes"),
+        lambda s: s["days"][2].update(kind="value", value=None),
+        lambda s: s["days"][2].update(value="99"),
+        lambda s: s.update(confirmation={"total_hours": "8"}),
+    ],
+)
+def test_a_damaged_session_is_refused_not_repaired(data_dir, damage) -> None:
+    session = session_for(fixture("entries-clean"), data_dir)
+    damage(session)
+    write_session_file(data_dir, session)
+    assert error_code(ex.load_session, data_dir, "anna", MONTH) == "corrupt_session"
+
+
+def test_a_confirmed_session_must_carry_a_complete_result(data_dir) -> None:
+    session = session_for(fixture("entries-clean"), data_dir)
+    confirm(session, data_dir)
+    del session["confirmation"]["snapshot"]["hourly_rate"]
+    write_session_file(data_dir, session)
+    assert error_code(ex.load_session, data_dir, "anna", MONTH) == "corrupt_session"
+
+
+def test_hand_edited_flags_are_recomputed_on_load(data_dir) -> None:
+    """Flags are derived data; clearing them by hand must not clear the gate."""
+    session = session_for(fixture("entries-flagged"), data_dir)
+    for day in session["days"]:
+        day["flags"] = []
+    write_session_file(data_dir, session)
+
+    reloaded = ex.load_session(data_dir, "anna", MONTH)
+    assert [item["date"] for item in ex.attention_items(reloaded)] == [
+        "2026-08-04", "2026-08-10", "2026-08-11", "2026-08-18",
+    ]
+    assert error_code(confirm, reloaded, data_dir) == "blank_working_day"
 
 
 # --------------------------------------------------------------------------

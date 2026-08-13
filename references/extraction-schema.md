@@ -30,7 +30,8 @@ allowed to mean. The handover between the two is this JSON document, passed with
 | `entries` | yes | One object per transcribed day. |
 
 Unknown fields are rejected, so a typo (`"cofidence"`) fails loudly instead of
-being ignored.
+being ignored. "Must be omitted" means omitted: an explicit `"value": null` is
+refused rather than read as absent.
 
 ## `observed_name`
 

@@ -38,6 +38,7 @@ re-registration can never retroactively change what was already confirmed
 
 from __future__ import annotations
 
+import calendar
 import hashlib
 import re
 from datetime import date, datetime, timezone
@@ -47,7 +48,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .datadir import DataDir, atomic_output_file, read_json, write_json_atomic
 from .errors import TimesheetError
-from .layout import MonthLayout, validate_month
+from .layout import MonthLayout, split_month, validate_month
 from .money import canonical_decimal_string, parse_hours
 from .pay import build_receipt, total_from_days
 
@@ -233,7 +234,7 @@ def validate_observed_name(raw: object) -> dict[str, Any]:
 
     value = entry.get("value")
     if kind == NAME_KIND_VALUE:
-        if not isinstance(value, str) or not value.strip():
+        if "value" not in entry or not isinstance(value, str) or not value.strip():
             raise TimesheetError(
                 "invalid_observed_name",
                 "'observed_name.value' is required (and must be non-empty text) when the name was read.",
@@ -249,7 +250,9 @@ def validate_observed_name(raw: object) -> dict[str, Any]:
             )
         return {"kind": kind, "value": cleaned}
 
-    if value is not None:
+    # Presence, not emptiness: an explicit "value": null is a contradiction the
+    # documented schema does not allow, so it is refused rather than ignored.
+    if "value" in entry:
         raise TimesheetError(
             "invalid_observed_name",
             f"'observed_name.value' must be omitted when kind is '{kind}'.",
@@ -349,9 +352,12 @@ def parse_entries_document(raw: object, *, layout: MonthLayout, worker_id: str) 
                 {"date": iso, "value": confidence, "allowed": list(CONFIDENCES)},
             )
 
+        # Presence, not emptiness: `{"kind": "blank", "value": null}` states two
+        # different things and is refused instead of quietly treated as absent.
+        has_value = "value" in entry
         raw_value = entry.get("value")
         if kind == KIND_VALUE:
-            if raw_value is None:
+            if not has_value or raw_value is None:
                 raise TimesheetError(
                     "invalid_entries",
                     f"{iso}: 'value' is required when kind is 'value'. Use kind 'blank' for an empty "
@@ -363,7 +369,7 @@ def parse_entries_document(raw: object, *, layout: MonthLayout, worker_id: str) 
             # A written 0 is a written 0 however it was labelled.
             kind = KIND_ZERO if hours == 0 else KIND_VALUE
         else:
-            if raw_value is not None:
+            if has_value:
                 raise TimesheetError(
                     "invalid_entries",
                     f"{iso}: 'value' must be omitted when kind is '{kind}'.",
@@ -512,6 +518,133 @@ def provisional_total(session: Mapping[str, Any]) -> Decimal:
     return total_from_days(session["days"])
 
 
+DAY_FIELDS = frozenset(
+    {"date", "label", "weekday", "working", "kind", "value", "confidence", "note", "source", "corrected", "accepted", "flags"}
+)
+DAY_SOURCES: frozenset[str] = frozenset({SOURCE_EXTRACTION, SOURCE_NOT_REPORTED, SOURCE_CORRECTION})
+KNOWN_FLAGS: frozenset[str] = ACCEPTABLE_FLAGS | CORRECTION_ONLY_FLAGS
+CONFIRMATION_FIELDS = frozenset({"confirmed_at", "snapshot", "total_hours", "receipt", "days"})
+
+
+def _corrupt(path: Path, problem: str, **detail: Any) -> TimesheetError:
+    return TimesheetError(
+        "corrupt_session",
+        f"The extraction file '{path}' is not usable: {problem}. Run 'validate-extraction' again "
+        "with --overwrite to redo the transcription.",
+        {"path": str(path), "problem": problem, **detail},
+    )
+
+
+def month_dates(month: str) -> list[str]:
+    """Every calendar date of ``YYYY-MM`` in order — the shape a session must have."""
+    year, number = split_month(month)
+    _, day_count = calendar.monthrange(year, number)
+    return [date(year, number, day).isoformat() for day in range(1, day_count + 1)]
+
+
+def _validate_loaded_session(payload: Any, path: Path, worker_id: str, month: str) -> dict[str, Any]:
+    """Check a session file thoroughly enough to trust it with payroll.
+
+    A session that lost days (a truncated file, a hand edit) would otherwise
+    confirm as a short month: dates that are simply absent cannot be flagged as
+    blank working days. So the calendar shape is verified, not assumed, and the
+    flags are recomputed from the day data rather than trusted as stored.
+    """
+    if not isinstance(payload, dict):
+        raise _corrupt(path, "it does not contain a session object")
+
+    version = payload.get("schema_version")
+    if version != SESSION_VERSION:
+        raise TimesheetError(
+            "unsupported_session_version",
+            f"The extraction file '{path}' was written by a different version "
+            f"(found {version!r}, expected {SESSION_VERSION}).",
+            {"path": str(path), "schema_version": version},
+        )
+
+    if payload.get("worker_id") != worker_id or payload.get("month") != month:
+        raise _corrupt(
+            path,
+            "it belongs to a different worker or month",
+            found={"worker_id": payload.get("worker_id"), "month": payload.get("month")},
+            expected={"worker_id": worker_id, "month": month},
+        )
+
+    status = payload.get("status")
+    if status not in (STATUS_EXTRACTED, STATUS_CONFIRMED):
+        raise _corrupt(path, f"its status {status!r} is not recognised")
+
+    identity = payload.get("identity")
+    if not isinstance(identity, dict) or not isinstance(identity.get("observed_name"), dict):
+        raise _corrupt(path, "the recorded worker-name observation is missing")
+    observed = identity["observed_name"]
+    if observed.get("kind") not in NAME_KINDS or identity.get("status") not in {
+        IDENTITY_MATCHED,
+        IDENTITY_MISMATCH,
+        IDENTITY_UNREADABLE,
+        IDENTITY_NOT_PROVIDED,
+    }:
+        raise _corrupt(path, "the recorded worker-name observation is not readable")
+    if not isinstance(identity.get("accepted"), bool) or not isinstance(identity.get("registered_name"), str):
+        raise _corrupt(path, "the recorded worker-name observation is not readable")
+
+    days = payload.get("days")
+    if not isinstance(days, list):
+        raise _corrupt(path, "it has no list of days")
+    expected = month_dates(month)
+    if [day.get("date") if isinstance(day, dict) else None for day in days] != expected:
+        raise _corrupt(
+            path,
+            f"it does not hold every day of {month} exactly once, in order",
+            expected_days=len(expected),
+            found_days=len(days),
+        )
+
+    for day in days:
+        missing = sorted(DAY_FIELDS - set(day))
+        if missing:
+            raise _corrupt(path, f"{day['date']} is missing: {', '.join(missing)}")
+        if day["kind"] not in ENTRY_KINDS or day["confidence"] not in CONFIDENCES:
+            raise _corrupt(path, f"{day['date']} has an unknown kind or confidence")
+        if day["source"] not in DAY_SOURCES:
+            raise _corrupt(path, f"{day['date']} has an unknown source")
+        if not all(isinstance(day[field], bool) for field in ("working", "corrected", "accepted")):
+            raise _corrupt(path, f"{day['date']} has a malformed yes/no field")
+        if day["note"] is not None and not isinstance(day["note"], str):
+            raise _corrupt(path, f"{day['date']} has a malformed note")
+        if not isinstance(day["flags"], list) or set(day["flags"]) - KNOWN_FLAGS:
+            raise _corrupt(path, f"{day['date']} has unknown flags")
+        if day["value"] is not None:
+            try:
+                _validate_hours(day["value"], day["date"])
+            except TimesheetError as exc:
+                raise _corrupt(path, f"{day['date']} holds unusable hours ({exc.message})") from exc
+        elif day["kind"] in (KIND_VALUE, KIND_ZERO):
+            raise _corrupt(path, f"{day['date']} is recorded as read but has no hours")
+        # Flags are derived data: recompute them so a hand-edited file cannot
+        # drop a day out of the attention list.
+        day["flags"] = compute_flags(day)
+
+    confirmation = payload.get("confirmation")
+    if status == STATUS_CONFIRMED:
+        if not isinstance(confirmation, dict) or sorted(confirmation) != sorted(CONFIRMATION_FIELDS):
+            raise _corrupt(path, "the confirmed result is incomplete")
+        snapshot = confirmation["snapshot"]
+        if not isinstance(snapshot, dict) or not {
+            "worker_id",
+            "display_name",
+            "hourly_rate",
+            "currency",
+        } <= set(snapshot):
+            raise _corrupt(path, "the confirmed result has no complete worker snapshot")
+        if not isinstance(confirmation.get("receipt"), dict) or not isinstance(confirmation["days"], list):
+            raise _corrupt(path, "the confirmed result is incomplete")
+    elif confirmation is not None:
+        raise _corrupt(path, "it carries a confirmed result although it is not confirmed")
+
+    return payload
+
+
 def load_session(data_dir: DataDir, worker_id: str, month: str) -> dict[str, Any]:
     path = session_path(data_dir, worker_id, month)
     try:
@@ -523,22 +656,7 @@ def load_session(data_dir: DataDir, worker_id: str, month: str) -> dict[str, Any
             "Run 'validate-extraction' with the transcribed entries first.",
             {"worker_id": worker_id, "month": month, "path": str(path)},
         ) from exc
-
-    if not isinstance(payload, dict) or not isinstance(payload.get("days"), list):
-        raise TimesheetError(
-            "corrupt_session",
-            f"The extraction file '{path}' is not in the expected format.",
-            {"path": str(path)},
-        )
-    version = payload.get("schema_version")
-    if version != SESSION_VERSION:
-        raise TimesheetError(
-            "unsupported_session_version",
-            f"The extraction file '{path}' was written by a different version "
-            f"(found {version!r}, expected {SESSION_VERSION}).",
-            {"path": str(path), "schema_version": version},
-        )
-    return payload
+    return _validate_loaded_session(payload, path, worker_id, validate_month(month))
 
 
 def save_session(data_dir: DataDir, session: Mapping[str, Any]) -> Path:
@@ -597,6 +715,25 @@ def apply_correction(session: dict[str, Any], raw_date: str, raw_hours: str) -> 
         day["accepted"] = False
         day["flags"] = compute_flags(day)
     return day
+
+
+def refresh_identity(session: dict[str, Any], record: Mapping[str, Any]) -> dict[str, Any]:
+    """Re-compare the observed name with the name that is about to be frozen.
+
+    The identity check is only worth anything if it is made against the record
+    the snapshot actually uses. If the worker was re-registered under a
+    different display name between extraction and confirmation, the stored
+    ``matched`` verdict is about a name nobody is being paid under any more, so
+    it is recomputed and any earlier acceptance is withdrawn — the human has to
+    look again.
+    """
+    identity = session["identity"]
+    if identity.get("registered_name") != record["display_name"]:
+        identity["registered_name"] = record["display_name"]
+        identity["status"] = identity_status(identity["observed_name"], record["display_name"])
+        identity["accepted"] = False
+        identity["accepted_at"] = None
+    return identity
 
 
 def confirmation_blockers(session: Mapping[str, Any]) -> dict[str, Any]:
@@ -704,9 +841,10 @@ def confirm_session(
     the worker afterwards cannot silently change an already-confirmed payment
     (plan decision 1).
     """
-    if accept_identity and session["identity"]["status"] in IDENTITY_BLOCKING:
-        session["identity"]["accepted"] = True
-        session["identity"]["accepted_at"] = confirmed_at or _now()
+    identity = refresh_identity(session, record)
+    if accept_identity and identity["status"] in IDENTITY_BLOCKING:
+        identity["accepted"] = True
+        identity["accepted_at"] = confirmed_at or _now()
 
     blockers = confirmation_blockers(session)
     _raise_blocked(blockers)
