@@ -3,11 +3,13 @@
 
 Subcommands available so far::
 
-    register       create or update a worker
-    show           read a worker back (or list all)
-    generate       write the blank monthly sheet for a worker
-    export-data    write a portable worker bundle (registry only)
-    import-data    read a worker bundle back in, transactionally
+    register             create or update a worker
+    show                 read a worker back (or list all)
+    generate             write the blank monthly sheet for a worker
+    validate-extraction  check transcribed hours and open a confirmation session
+    confirm              correct/accept flagged days and freeze the month
+    export-data          write a portable worker bundle (registry only)
+    import-data          read a worker bundle back in, transactionally
 
 Every subcommand accepts ``--json`` for machine-readable output. Failures print
 ``{"code", "message", "detail"}`` to stderr and exit non-zero; the ``message``
@@ -24,9 +26,11 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from lib import extraction as ex  # noqa: E402
 from lib import registry as reg  # noqa: E402
 from lib.datadir import (  # noqa: E402
     DataDir,
+    file_lock,
     find_git_worktree,
     read_json,
     reserve_new_file,
@@ -35,6 +39,7 @@ from lib.datadir import (  # noqa: E402
 )
 from lib.errors import TimesheetError  # noqa: E402
 from lib.layout import build_month_layout  # noqa: E402
+from lib.money import canonical_decimal_string  # noqa: E402
 from lib.xlsx_sheet import sheet_filename, write_month_sheet  # noqa: E402
 
 EXIT_ERROR = 1
@@ -178,6 +183,143 @@ def cmd_generate(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def _read_entries_document(source: str) -> Any:
+    """Read the transcription document from a file or from stdin (``-``)."""
+    if source == "-":
+        text = sys.stdin.read()
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise TimesheetError(
+                "corrupt_json",
+                f"The entries given on standard input are not readable as JSON "
+                f"({exc.msg}, line {exc.lineno}).",
+                {"source": "stdin"},
+            ) from exc
+    path = Path(source).expanduser()
+    try:
+        return read_json(path)
+    except FileNotFoundError as exc:
+        raise TimesheetError(
+            "input_missing",
+            f"The entries file '{path}' does not exist.",
+            {"path": str(path)},
+        ) from exc
+
+
+def cmd_validate_extraction(args: argparse.Namespace) -> dict[str, Any]:
+    data_dir = _data_dir(args)
+    record = reg.get_worker(data_dir, args.worker)
+    layout = build_month_layout(record, args.month)
+    document = ex.parse_entries_document(
+        _read_entries_document(args.entries), layout=layout, worker_id=record["id"]
+    )
+
+    # One lock for the whole check-then-write cycle: two parallel extractions
+    # for the same month must not both decide the session does not exist yet.
+    with file_lock(data_dir.session_lock_path):
+        path = ex.session_path(data_dir, record["id"], layout.month)
+        if path.exists() and not args.overwrite:
+            raise TimesheetError(
+                "session_exists",
+                f"An extraction for {layout.title} already exists for worker '{record['id']}'. "
+                "Nothing was changed. Use 'confirm' to continue it, or repeat with --overwrite "
+                "to start the transcription again.",
+                {"worker_id": record["id"], "month": layout.month, "path": str(path)},
+            )
+        evidence = ex.ingest_evidence(data_dir, args.photo or [], worker_id=record["id"], month=layout.month)
+        session = ex.build_session(record=record, layout=layout, document=document, evidence=evidence)
+        session_file = ex.save_session(data_dir, session)
+
+    attention = ex.attention_items(session)
+    identity = session["identity"]
+    warnings = list(data_dir.warnings)
+    if identity["status"] in ex.IDENTITY_BLOCKING:
+        warnings.append(
+            "The worker name on the sheet "
+            + (
+                "does not match the registered name"
+                if identity["status"] == ex.IDENTITY_MISMATCH
+                else "could not be read"
+            )
+            + f" (registered: '{identity['registered_name']}'). Confirmation needs --accept-identity."
+        )
+    return {
+        "command": "validate-extraction",
+        "worker": {"id": record["id"], "display_name": record["display_name"]},
+        "month": layout.month,
+        "month_title": layout.title,
+        "status": session["status"],
+        "provisional_total_hours": canonical_decimal_string(ex.provisional_total(session)),
+        "days": len(session["days"]),
+        "identity": {
+            "status": identity["status"],
+            "observed_name": identity["observed_name"],
+            "registered_name": identity["registered_name"],
+        },
+        "needs_attention": attention,
+        "needs_attention_count": len(attention),
+        "evidence": session["evidence"],
+        "session_file": str(session_file),
+        "data_dir": str(data_dir.path),
+        "warnings": warnings,
+    }
+
+
+def cmd_confirm(args: argparse.Namespace) -> dict[str, Any]:
+    data_dir = _data_dir(args)
+    corrections = [ex.parse_set_argument(raw) for raw in (args.set or [])]
+
+    with file_lock(data_dir.session_lock_path):
+        session = ex.load_session(data_dir, args.worker, args.month)
+        if session["status"] == ex.STATUS_CONFIRMED:
+            if corrections or args.accept_identity:
+                raise TimesheetError(
+                    "already_confirmed",
+                    f"The hours for {session.get('month_title', session['month'])} were already confirmed on "
+                    f"{session['confirmation']['confirmed_at']} and cannot be changed. To start over, "
+                    "run 'validate-extraction' again with --overwrite.",
+                    {"worker_id": session["worker_id"], "month": session["month"]},
+                )
+            confirmation = session["confirmation"]
+            session_file = ex.session_path(data_dir, session["worker_id"], session["month"])
+        else:
+            record = reg.get_worker(data_dir, session["worker_id"])
+            for iso, hours in corrections:
+                ex.apply_correction(session, iso, hours)
+            try:
+                confirmation = ex.confirm_session(session, record, accept_identity=args.accept_identity)
+            except TimesheetError:
+                # Keep the corrections that did land, so a long month can be
+                # worked through in several passes.
+                ex.save_session(data_dir, session)
+                raise
+            session_file = ex.save_session(data_dir, session)
+
+    return {
+        "command": "confirm",
+        "worker": {
+            "id": confirmation["snapshot"]["worker_id"],
+            "display_name": confirmation["snapshot"]["display_name"],
+        },
+        "month": session["month"],
+        "month_title": session.get("month_title", session["month"]),
+        "status": session["status"],
+        "confirmed_at": confirmation["confirmed_at"],
+        "total_hours": confirmation["total_hours"],
+        "receipt": confirmation["receipt"],
+        "snapshot": confirmation["snapshot"],
+        "days": confirmation["days"],
+        "identity": {
+            "status": session["identity"]["status"],
+            "accepted": session["identity"]["accepted"],
+        },
+        "session_file": str(session_file),
+        "data_dir": str(data_dir.path),
+        "warnings": list(data_dir.warnings),
+    }
+
+
 def cmd_export_data(args: argparse.Namespace) -> dict[str, Any]:
     data_dir = _data_dir(args)
     bundle = reg.export_bundle(data_dir)
@@ -250,6 +392,26 @@ def _render_human(payload: dict[str, Any]) -> str:
         lines.append(
             f"  {payload['days']} days — {payload['working_days']} working, {payload['off_days']} off."
         )
+    elif command == "validate-extraction":
+        lines.append(
+            f"Checked the hours for {payload['worker']['display_name']} ({payload['month_title']})."
+        )
+        lines.append(f"  Provisional total (readable days only): {payload['provisional_total_hours']} h")
+        lines.append(f"  Name on the sheet: {payload['identity']['status']}")
+        if payload["needs_attention"]:
+            lines.append(f"  {payload['needs_attention_count']} day(s) need a decision:")
+            for item in payload["needs_attention"]:
+                lines.append(f"    {item['label']}: {', '.join(item['reasons'])} — {item['resolution']}")
+        else:
+            lines.append("  No days need a decision; you can run 'confirm'.")
+        for item in payload["evidence"]:
+            lines.append(f"  Photo kept as {item['stored_filename']} (sha256 {item['sha256'][:12]}…)")
+    elif command == "confirm":
+        lines.append(
+            f"Confirmed {payload['total_hours']} hours for {payload['worker']['display_name']} "
+            f"({payload['month_title']})."
+        )
+        lines.append(f"  {payload['receipt']['statement']}")
     elif command == "export-data":
         lines.append(f"Wrote {payload['worker_count']} worker(s) to {payload['path']}.")
     elif command == "import-data":
@@ -331,6 +493,49 @@ def build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--force", action="store_true", help="Replace an existing sheet for this month.")
     add_common(generate)
     generate.set_defaults(func=cmd_generate)
+
+    validate = subparsers.add_parser(
+        "validate-extraction",
+        help="Check transcribed hours against the month and open a confirmation session.",
+    )
+    validate.add_argument("--worker", required=True, help="Registered worker ID (never guessed from the sheet).")
+    validate.add_argument("--month", required=True, help="Month the sheet covers, e.g. '2026-08'.")
+    validate.add_argument(
+        "--entries",
+        required=True,
+        metavar="PATH",
+        help="JSON file with the transcribed days, or '-' to read it from standard input.",
+    )
+    validate.add_argument(
+        "--photo",
+        action="append",
+        metavar="PATH",
+        help="Photo/scan of the filled-in sheet, kept as evidence (repeatable).",
+    )
+    validate.add_argument(
+        "--overwrite", action="store_true", help="Replace an existing extraction for this month."
+    )
+    add_common(validate)
+    validate.set_defaults(func=cmd_validate_extraction)
+
+    confirm = subparsers.add_parser(
+        "confirm", help="Correct or accept flagged days and freeze the month's hours."
+    )
+    confirm.add_argument("--worker", required=True, help="Registered worker ID.")
+    confirm.add_argument("--month", required=True, help="Month to confirm, e.g. '2026-08'.")
+    confirm.add_argument(
+        "--set",
+        action="append",
+        metavar="DATE=HOURS",
+        help="Correct one day, e.g. --set 2026-08-04=7.5 (repeat the shown value to accept it).",
+    )
+    confirm.add_argument(
+        "--accept-identity",
+        action="store_true",
+        help="Confirm the sheet belongs to this worker although the name did not match or was unreadable.",
+    )
+    add_common(confirm)
+    confirm.set_defaults(func=cmd_confirm)
 
     export = subparsers.add_parser(
         "export-data", help="Write a portable bundle of the worker registry (no photos, no sessions)."

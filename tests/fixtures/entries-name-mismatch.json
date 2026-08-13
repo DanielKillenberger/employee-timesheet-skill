@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "month": "2026-08",
+  "observed_name": {
+    "kind": "value",
+    "value": "Bea Beispiel"
+  },
+  "entries": [
+    {
+      "date": "2026-08-03",
+      "kind": "value",
+      "confidence": "high",
+      "value": "7.5"
+    },
+    {
+      "date": "2026-08-04",
+      "kind": "value",
+      "confidence": "high",
+      "value": "7.5"
+    },
+    {
+      "date": "2026-08-10",
+      "kind": "value",
+      "confidence": "high",
+      "value": "7.5"
+    },
+    {
+      "date": "2026-08-11",
+      "kind": "value",
+      "confidence": "high",
+      "value": "7.5"
+    },
+    {
+      "date": "2026-08-17",
+      "kind": "value",
+      "confidence": "high",
+      "value": "7.5"
+    },
+    {
+      "date": "2026-08-18",
+      "kind": "value",
+      "confidence": "high",
+      "value": "7.5"
+    },
+    {
+      "date": "2026-08-24",
+      "kind": "value",
+      "confidence": "high",
+      "value": "7.5"
+    },
+    {
+      "date": "2026-08-25",
+      "kind": "value",
+      "confidence": "high",
+      "value": "7.5"
+    },
+    {
+      "date": "2026-08-31",
+      "kind": "zero",
+      "confidence": "high"
+    }
+  ]
+}

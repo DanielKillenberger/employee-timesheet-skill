@@ -62,9 +62,26 @@ class DataDir:
         return self.child(".registry.lock")
 
     @property
+    def session_lock_path(self) -> Path:
+        return self.child(".extractions.lock")
+
+    @property
     def output_dir(self) -> Path:
         """Folder for generated documents; created owner-only on first use."""
-        path = self.child("output")
+        return self._private_subdir("output")
+
+    @property
+    def extractions_dir(self) -> Path:
+        """Folder for extraction/confirmation session files."""
+        return self._private_subdir("extractions")
+
+    @property
+    def evidence_dir(self) -> Path:
+        """Folder for the filled-in timesheet photos kept as evidence."""
+        return self._private_subdir("filled-timesheets")
+
+    def _private_subdir(self, name: str) -> Path:
+        path = self.child(name)
         ensure_private_dir(path)
         return path
 
