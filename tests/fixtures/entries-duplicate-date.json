@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "month": "2026-08",
+  "entries": [
+    {
+      "date": "2026-08-03",
+      "kind": "value",
+      "confidence": "high",
+      "value": "7.5"
+    },
+    {
+      "date": "2026-08-03",
+      "kind": "value",
+      "confidence": "high",
+      "value": "8"
+    }
+  ]
+}

@@ -8,7 +8,13 @@
   "default_sync": null,
   "depends_on_epics": [],
   "id": "fn-1-monthly-employee-timesheet-skill",
-  "impl_review_rounds": {},
+  "impl_review_rounds": {
+    "fn-1-monthly-employee-timesheet-skill.1": 0,
+    "fn-1-monthly-employee-timesheet-skill.2": 0,
+    "fn-1-monthly-employee-timesheet-skill.3": 0,
+    "fn-1-monthly-employee-timesheet-skill.4": 0,
+    "fn-1-monthly-employee-timesheet-skill.6": 4
+  },
   "next_task": 1,
   "plan_review_rounds": 0,
   "plan_review_status": "ship",
@@ -251,10 +257,448 @@
       "task": null,
       "timestamp": "2026-08-13T19:02:18.561028Z",
       "verdict": "SHIP"
+    },
+    {
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "head_sha": "b81e8ffbdc7490e6be18c451d7223b4c06b6e933",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "2f097f0a05cdaafbd1bf313784a2469d39a47da5dcd54fcca8c49c8ca4ecbf3d",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.1",
+      "task": "fn-1-monthly-employee-timesheet-skill.1",
+      "timestamp": "2026-08-13T19:14:27.218914Z",
+      "verdict": "NEEDS_WORK"
+    },
+    {
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "head_sha": "80eb6b4885bdbfaac684ee66296247cacee89e94",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "7546033ee26e9496a468e0a4c6772432793873b2f59771c445cb6602f4f2ad15",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.1",
+      "task": "fn-1-monthly-employee-timesheet-skill.1",
+      "timestamp": "2026-08-13T19:19:05.143286Z",
+      "verdict": "SHIP"
+    },
+    {
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "head_sha": "9014c7ca84b3b05cc9094471e816cd9ddb9bc6d5",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "5a4a09dd1e0a10697ecb690501775d84e6a2e405c4cfdb989aff5905143f2828",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.2",
+      "task": "fn-1-monthly-employee-timesheet-skill.2",
+      "timestamp": "2026-08-13T19:31:39.571989Z",
+      "verdict": "NEEDS_WORK"
+    },
+    {
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "head_sha": "1c3d44c175c9c379f7e855e1de5372759818b835",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "a53487820a2a51509d8c8efb099aa2c065e6f9e282b0e50e4f804b0581c3e80a",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.2",
+      "task": "fn-1-monthly-employee-timesheet-skill.2",
+      "timestamp": "2026-08-13T19:34:29.741907Z",
+      "verdict": "NEEDS_WORK"
+    },
+    {
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "head_sha": "536dc47f50484be511ccf8d7f4e72b69b4e3bef5",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "3f657c980165657c7fc1a7b6df392326d32ca3de5942b4ccb9b9187c623047ac",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.2",
+      "task": "fn-1-monthly-employee-timesheet-skill.2",
+      "timestamp": "2026-08-13T19:37:36.993256Z",
+      "verdict": "SHIP"
+    },
+    {
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "head_sha": "0631873fe447371f0581def0cbcc8c836fddef90",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "9330e77610db04930ac8da80312cfe4fdaaefcb96f00f415774c64a93154bd90",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.3",
+      "task": "fn-1-monthly-employee-timesheet-skill.3",
+      "timestamp": "2026-08-13T19:55:30.531347Z",
+      "verdict": "NEEDS_WORK"
+    },
+    {
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "head_sha": "f1981a0124b0d484a5c1b10cd12798b484ed3b27",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "5f6071f7a21cb9ac404371b1291d0d7a108948ce9afaf632a43c385c6cc59bf3",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.3",
+      "task": "fn-1-monthly-employee-timesheet-skill.3",
+      "timestamp": "2026-08-13T19:58:49.735185Z",
+      "verdict": "NEEDS_WORK"
+    },
+    {
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "head_sha": "e8eca8ae72e3d3f0c8d1704f20444a355925bd27",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "41201af3a22597570aa32b165cf9196ee136b6198b511671855d4cd1f687bd44",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.3",
+      "task": "fn-1-monthly-employee-timesheet-skill.3",
+      "timestamp": "2026-08-13T20:00:11.429186Z",
+      "verdict": "SHIP"
+    },
+    {
+      "artifact_sha256": "724edae11745d953586fa118401308a92151965f105960fd88f289bc816d084b",
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "finalized": {
+        "digest": "complete",
+        "receipt": "complete",
+        "status": "not_applicable"
+      },
+      "findings_digest": {
+        "backend": "codex",
+        "digest_truncated": false,
+        "items": [
+          {
+            "chainRoot": "finding-cc204ae89b2a6ab92616fe33bd900121",
+            "classification": "introduced",
+            "findingId": "finding-cc204ae89b2a6ab92616fe33bd900121",
+            "firstSeenThisRound": true,
+            "severity": "P1",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-4bcb5b476ad785e092dd3da794a10625",
+            "classification": "introduced",
+            "findingId": "finding-4bcb5b476ad785e092dd3da794a10625",
+            "firstSeenThisRound": true,
+            "severity": "P1",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-7e3e1bf6c3234c82245f87af48821694",
+            "classification": "introduced",
+            "findingId": "finding-7e3e1bf6c3234c82245f87af48821694",
+            "firstSeenThisRound": true,
+            "severity": "P1",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-0debd5ff42e36d8a8ec64e6d61c8390a",
+            "classification": "introduced",
+            "findingId": "finding-0debd5ff42e36d8a8ec64e6d61c8390a",
+            "firstSeenThisRound": true,
+            "severity": "P2",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-768f0cc98699824260b1b88a9c1c1fa7",
+            "classification": "introduced",
+            "findingId": "finding-768f0cc98699824260b1b88a9c1c1fa7",
+            "firstSeenThisRound": true,
+            "severity": "P2",
+            "status": "open"
+          }
+        ],
+        "reviewKind": "implementation"
+      },
+      "forced": false,
+      "hash_epoch": 0,
+      "head_sha": "b34053b90f0155c59a10eb6af27882c9e70bf5ee",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "9988beb5b4de2eaf049ceb6da00bbf93fe3db4472b8dd43cfa848f188455f1e0",
+      "reservation_id": "1c1c9bcc5cc648db92c3dcb8b3a78916",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.4",
+      "superseded_by": null,
+      "task": "fn-1-monthly-employee-timesheet-skill.4",
+      "timestamp": "2026-08-13T20:21:16.892852Z",
+      "verdict": "NEEDS_WORK"
+    },
+    {
+      "artifact_sha256": "702f2ed9df013a7e51ab7cfab40763043aee59162dbde3df6d75f9e9134fa08e",
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "finalized": {
+        "digest": "complete",
+        "receipt": "complete",
+        "status": "not_applicable"
+      },
+      "findings_digest": {
+        "backend": "codex",
+        "digest_truncated": false,
+        "items": [
+          {
+            "chainRoot": "finding-cc204ae89b2a6ab92616fe33bd900121",
+            "classification": "introduced",
+            "findingId": "finding-cc204ae89b2a6ab92616fe33bd900121",
+            "firstSeenThisRound": false,
+            "severity": "P1",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-4bcb5b476ad785e092dd3da794a10625",
+            "classification": "introduced",
+            "findingId": "finding-4bcb5b476ad785e092dd3da794a10625",
+            "firstSeenThisRound": false,
+            "severity": "P1",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-7e3e1bf6c3234c82245f87af48821694",
+            "classification": "introduced",
+            "findingId": "finding-7e3e1bf6c3234c82245f87af48821694",
+            "firstSeenThisRound": false,
+            "severity": "P1",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-0debd5ff42e36d8a8ec64e6d61c8390a",
+            "classification": "introduced",
+            "findingId": "finding-0debd5ff42e36d8a8ec64e6d61c8390a",
+            "firstSeenThisRound": false,
+            "severity": "P2",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-768f0cc98699824260b1b88a9c1c1fa7",
+            "classification": "introduced",
+            "findingId": "finding-768f0cc98699824260b1b88a9c1c1fa7",
+            "firstSeenThisRound": false,
+            "severity": "P2",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-78848aaffb918942b319b1294eb8b3e1",
+            "classification": "introduced",
+            "findingId": "finding-78848aaffb918942b319b1294eb8b3e1",
+            "firstSeenThisRound": true,
+            "severity": "P2",
+            "status": "open"
+          }
+        ],
+        "reviewKind": "implementation"
+      },
+      "forced": false,
+      "hash_epoch": 0,
+      "head_sha": "9883dfbe3beb3b6efc15ee61350fddc499cfa364",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "f5b987c9bb50031b1cd4ccfda0c52d3c3fddc293714895b1db7d506440d2757b",
+      "reservation_id": "66e17f531e4e46f083d3cdc8e229f0e7",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.4",
+      "superseded_by": null,
+      "task": "fn-1-monthly-employee-timesheet-skill.4",
+      "timestamp": "2026-08-13T20:30:51.405135Z",
+      "verdict": "NEEDS_WORK"
+    },
+    {
+      "artifact_sha256": "81f7c497134f9e6ccc2c2651da82cfee04f8932ef4cfbf4e583db50dcbccba14",
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "finalized": {
+        "digest": "complete",
+        "receipt": "complete",
+        "status": "not_applicable"
+      },
+      "findings_digest": {
+        "backend": "codex",
+        "digest_truncated": false,
+        "items": [
+          {
+            "chainRoot": "finding-cc204ae89b2a6ab92616fe33bd900121",
+            "classification": "introduced",
+            "findingId": "finding-cc204ae89b2a6ab92616fe33bd900121",
+            "firstSeenThisRound": false,
+            "severity": "P1",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-4bcb5b476ad785e092dd3da794a10625",
+            "classification": "introduced",
+            "findingId": "finding-4bcb5b476ad785e092dd3da794a10625",
+            "firstSeenThisRound": false,
+            "severity": "P1",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-7e3e1bf6c3234c82245f87af48821694",
+            "classification": "introduced",
+            "findingId": "finding-7e3e1bf6c3234c82245f87af48821694",
+            "firstSeenThisRound": false,
+            "severity": "P1",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-0debd5ff42e36d8a8ec64e6d61c8390a",
+            "classification": "introduced",
+            "findingId": "finding-0debd5ff42e36d8a8ec64e6d61c8390a",
+            "firstSeenThisRound": false,
+            "severity": "P2",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-768f0cc98699824260b1b88a9c1c1fa7",
+            "classification": "introduced",
+            "findingId": "finding-768f0cc98699824260b1b88a9c1c1fa7",
+            "firstSeenThisRound": false,
+            "severity": "P2",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-78848aaffb918942b319b1294eb8b3e1",
+            "classification": "introduced",
+            "findingId": "finding-78848aaffb918942b319b1294eb8b3e1",
+            "firstSeenThisRound": false,
+            "severity": "P2",
+            "status": "open"
+          },
+          {
+            "chainRoot": "finding-286a53c159451b93401e2e19a7361fcd",
+            "classification": "introduced",
+            "findingId": "finding-286a53c159451b93401e2e19a7361fcd",
+            "firstSeenThisRound": true,
+            "severity": "P2",
+            "status": "open"
+          }
+        ],
+        "reviewKind": "implementation"
+      },
+      "forced": false,
+      "hash_epoch": 1,
+      "head_sha": "81c85f4e580656f00bd5c329eb68af943dafa771",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "2af73c5c23066e14491479d5672674243e194b2db42550219cd7717e48e29b31",
+      "reservation_id": "fdae602a77174166b164523d9931f6e4",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.4",
+      "superseded_by": null,
+      "task": "fn-1-monthly-employee-timesheet-skill.4",
+      "timestamp": "2026-08-13T20:38:01.307273Z",
+      "verdict": "NEEDS_WORK"
+    },
+    {
+      "artifact_sha256": "e9d1557b687ea1a812b026c781c253bb96b152a36576f324fbb7a9ca647f7dd1",
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "finalized": {
+        "digest": "complete",
+        "receipt": "complete",
+        "status": "not_applicable"
+      },
+      "forced": false,
+      "hash_epoch": 1,
+      "head_sha": "7fc3d7dc39f9d716f6cbebe075aed396157d9d90",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "424f0fb644fe20939afe45e647149fa74aa6d5f218e42cb092cb3103728fb3c1",
+      "reservation_id": "025051ea709f4b5d933f5295ad4a014e",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.4",
+      "superseded_by": null,
+      "task": "fn-1-monthly-employee-timesheet-skill.4",
+      "timestamp": "2026-08-13T20:39:34.468410Z",
+      "verdict": "SHIP"
+    },
+    {
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "head_sha": "656c6f2d940cf9976cc18fffcffba038363b75f0",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "282b7b3f4315fc13d1a6eec74dc19b6b33b1b679cd2c46ff50793184f2cabd31",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.6",
+      "task": "fn-1-monthly-employee-timesheet-skill.6",
+      "timestamp": "2026-08-13T20:51:25.795769Z",
+      "verdict": "NEEDS_WORK"
+    },
+    {
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "head_sha": "738fe911713f97509489d57cc6c8e1451c787852",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "73240c03653028998a8d96220e5061b5a2b0378537f1561bba07331bf7f4b0b6",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.6",
+      "task": "fn-1-monthly-employee-timesheet-skill.6",
+      "timestamp": "2026-08-13T20:55:45.640644Z",
+      "verdict": "NEEDS_WORK"
+    },
+    {
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "head_sha": "4a3cba388dc5f1d0396779b0983411445855d3eb",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "708c9e5bff5347cf6aff682e2a40699c8f2834c9eef25ebe915c62a2f45479f7",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.6",
+      "task": "fn-1-monthly-employee-timesheet-skill.6",
+      "timestamp": "2026-08-13T20:58:41.699725Z",
+      "verdict": "NEEDS_WORK"
+    },
+    {
+      "backend": "codex",
+      "counter_kind": "impl",
+      "failure_class": null,
+      "head_sha": "670158f69a0c30e5715340cb371a1313650de503",
+      "kind": "impl",
+      "outcome": "verdict",
+      "output_sha256": "2f3149c7d037ec0359664cc40943dc387b2250fe280521b16f068a6b26eb3071",
+      "round_consumed": true,
+      "scope": "impl:fn-1-monthly-employee-timesheet-skill.6",
+      "task": "fn-1-monthly-employee-timesheet-skill.6",
+      "timestamp": "2026-08-13T20:59:23.186233Z",
+      "verdict": "NEEDS_WORK"
     }
   ],
+  "review_hash_epoch": {
+    "impl:fn-1-monthly-employee-timesheet-skill.4": 2
+  },
   "review_pending_rounds": {},
+  "review_reservations": {},
   "review_transport_failures": {
+    "impl:fn-1-monthly-employee-timesheet-skill.1": 0,
+    "impl:fn-1-monthly-employee-timesheet-skill.2": 0,
+    "impl:fn-1-monthly-employee-timesheet-skill.3": 0,
+    "impl:fn-1-monthly-employee-timesheet-skill.4": 0,
+    "impl:fn-1-monthly-employee-timesheet-skill.6": 0,
     "plan": 0
   },
   "spec_path": ".flow/specs/fn-1-monthly-employee-timesheet-skill.md",
@@ -271,5 +715,5 @@
     "mergeBaseTracker": null,
     "url": null
   },
-  "updated_at": "2026-08-13T19:02:18.561132Z"
+  "updated_at": "2026-08-13T20:59:23.186432Z"
 }

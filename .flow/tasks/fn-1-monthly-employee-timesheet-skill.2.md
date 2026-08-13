@@ -34,9 +34,8 @@ Shared month layout model + openpyxl XLSX renderer for the blank monthly sheet (
 - [ ] reference-layout.md + checklist written
 - [ ] Eyeball evidence recorded
 ## Done summary
-TBD
-
+Shared month layout model (`scripts/lib/layout.py`, pure: every calendar date once, German weekday/date labels and month titles, leap-aware, deterministic month-override precedence) plus the openpyxl renderer (`scripts/lib/xlsx_sheet.py`) and the `generate` CLI subcommand, writing a one-page portrait A4 sheet to `output/<worker>-<YYYY-MM>.xlsx` with grey off-day rows, blank hour cells and a real `SUM` total. All user-derived text is written as literal string cells (formula-injection safe), sheets are written atomically at 0600, and the early proof point holds: the table occupies 4.8 x 7.7 in inside A4's 7.3 x 10.7 in printable area, so one-page fit does not depend on the reader honouring fit-to-page. 63 new layout/XLSX tests (207 total); representative sheet visually verified on a rendered A4 page and recorded in `references/reference-layout.md`.
 ## Evidence
-- Commits:
-- Tests:
+- Commits: 9014c7ca84b3b05cc9094471e816cd9ddb9bc6d5, 1c3d44c175c9c379f7e855e1de5372759818b835, 536dc47f50484be511ccf8d7f4e72b69b4e3bef5
+- Tests: GATE_SKIPPED:unittest:green-receipt 80eb6b48 - baseline reused from prior post-gate pass, uv run pytest (207 passed), uv run scripts/timesheet.py --help, .flow/bin/flowctl validate --all --json (0 errors, 0 warnings), codex impl-review gpt-5.6-sol: SHIP (round 3)
 - PRs:
