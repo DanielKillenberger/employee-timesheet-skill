@@ -614,13 +614,26 @@ def _validate_loaded_session(payload: Any, path: Path, worker_id: str, month: st
             raise _corrupt(path, f"{day['date']} has a malformed note")
         if not isinstance(day["flags"], list) or set(day["flags"]) - KNOWN_FLAGS:
             raise _corrupt(path, f"{day['date']} has unknown flags")
-        if day["value"] is not None:
+        # Kind and value must agree. They are read by different code paths —
+        # the flags follow the kind, the total follows the value — so a record
+        # that says "blank" while carrying 24 hours would be invisible to the
+        # gate and still land in the payment.
+        if day["value"] is None:
+            if day["kind"] in (KIND_VALUE, KIND_ZERO):
+                raise _corrupt(path, f"{day['date']} is recorded as read but has no hours")
+        else:
+            if day["kind"] in (KIND_BLANK, KIND_UNREADABLE):
+                raise _corrupt(
+                    path, f"{day['date']} holds hours although it is recorded as '{day['kind']}'"
+                )
             try:
-                _validate_hours(day["value"], day["date"])
+                hours = _validate_hours(day["value"], day["date"])
             except TimesheetError as exc:
                 raise _corrupt(path, f"{day['date']} holds unusable hours ({exc.message})") from exc
-        elif day["kind"] in (KIND_VALUE, KIND_ZERO):
-            raise _corrupt(path, f"{day['date']} is recorded as read but has no hours")
+            if (hours == 0) != (day["kind"] == KIND_ZERO):
+                raise _corrupt(
+                    path, f"{day['date']} is recorded as '{day['kind']}' but holds {day['value']} hours"
+                )
         # Flags are derived data: recompute them so a hand-edited file cannot
         # drop a day out of the attention list.
         day["flags"] = compute_flags(day)

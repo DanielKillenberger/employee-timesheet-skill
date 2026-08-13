@@ -536,6 +536,12 @@ def test_a_truncated_session_can_never_confirm_as_a_short_month(data_dir) -> Non
         lambda s: s["days"][0].update(working="yes"),
         lambda s: s["days"][2].update(kind="value", value=None),
         lambda s: s["days"][2].update(value="99"),
+        # kind and value must agree: the flags follow the kind, the total
+        # follows the value, so a contradiction would pay unflagged hours.
+        lambda s: s["days"][0].update(kind="blank", value="24"),
+        lambda s: s["days"][0].update(kind="unreadable", value="8"),
+        lambda s: s["days"][2].update(kind="zero", value="8"),
+        lambda s: s["days"][2].update(kind="value", value="0"),
         lambda s: s.update(confirmation={"total_hours": "8"}),
     ],
 )
@@ -552,6 +558,17 @@ def test_a_confirmed_session_must_carry_a_complete_result(data_dir) -> None:
     del session["confirmation"]["snapshot"]["hourly_rate"]
     write_session_file(data_dir, session)
     assert error_code(ex.load_session, data_dir, "anna", MONTH) == "corrupt_session"
+
+
+def test_hours_hidden_behind_a_blank_day_never_reach_the_total(data_dir) -> None:
+    """The flags follow the kind, the total follows the value — they must agree."""
+    session = session_for(fixture("entries-clean"), data_dir)
+    session["days"][0].update(kind=ex.KIND_BLANK, value="24")  # a Saturday
+    write_session_file(data_dir, session)
+    with pytest.raises(TimesheetError) as excinfo:
+        ex.load_session(data_dir, "anna", MONTH)
+    assert excinfo.value.code == "corrupt_session"
+    assert "2026-08-01" in excinfo.value.detail["problem"]
 
 
 def test_hand_edited_flags_are_recomputed_on_load(data_dir) -> None:
