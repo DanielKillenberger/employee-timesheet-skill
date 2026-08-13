@@ -55,7 +55,7 @@ _LEFT = Alignment(horizontal="left", vertical="center")
 _CENTER = Alignment(horizontal="center", vertical="center")
 
 
-def _text(cell: Cell, value: object) -> Cell:
+def write_text_cell(cell: Cell, value: object) -> Cell:
     """Write ``value`` as a literal string cell, never as a formula.
 
     openpyxl decides a cell is a formula purely from a leading ``=``, so a
@@ -84,6 +84,11 @@ def _text(cell: Cell, value: object) -> Cell:
     if text[:1] in ("=", "+", "-", "@"):
         cell.quotePrefix = True
     return cell
+
+
+#: Short alias used inside this module; :mod:`lib.tally` imports the public name
+#: so template substitution gets exactly the same formula-injection safety.
+_text = write_text_cell
 
 
 def _apply_page_setup(worksheet: Worksheet, last_row: int) -> None:

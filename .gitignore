@@ -24,5 +24,10 @@ output/
 *.xlsx
 *.pdf
 
+# ...except the bundled default tally template, which ships with the skill.
+# It is a generated file (tools/make_default_tally_template.py) but it must be
+# tracked, or an installed skill has no template to fall back to.
+!assets/default-tally-template.xlsx
+
 # Local agent state
 .claude/settings.local.json

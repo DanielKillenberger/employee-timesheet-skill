@@ -5,9 +5,10 @@ Subcommands available so far::
 
     register             create or update a worker
     show                 read a worker back (or list all)
-    generate             write the blank monthly sheet for a worker
+    generate             write the blank monthly sheet for a worker (XLSX + PDF)
     validate-extraction  check transcribed hours and open a confirmation session
     confirm              correct/accept flagged days and freeze the month
+    tally                produce the final tally for a confirmed month
     export-data          write a portable worker bundle (registry only)
     import-data          read a worker bundle back in, transactionally
 
@@ -40,6 +41,8 @@ from lib.datadir import (  # noqa: E402
 from lib.errors import TimesheetError  # noqa: E402
 from lib.layout import build_month_layout  # noqa: E402
 from lib.money import canonical_decimal_string  # noqa: E402
+from lib.pdf_sheet import sheet_pdf_filename, write_month_pdf  # noqa: E402
+from lib.tally import generate_tally  # noqa: E402
 from lib.xlsx_sheet import sheet_filename, write_month_sheet  # noqa: E402
 
 EXIT_ERROR = 1
@@ -144,22 +147,41 @@ def cmd_generate(args: argparse.Namespace) -> dict[str, Any]:
     record = reg.get_worker(data_dir, args.worker)
     layout = build_month_layout(record, args.month)
 
-    target = data_dir.output_dir / sheet_filename(layout)
+    xlsx_target = data_dir.output_dir / sheet_filename(layout)
+    pdf_target = data_dir.output_dir / sheet_pdf_filename(layout)
+    claimed: list[Path] = []
     if not args.force:
-        # Atomic claim, so a sheet someone already filled in is never silently
-        # replaced by a fresh blank one.
-        reserve_new_file(target)
+        # Atomic claim of both documents, so a sheet someone already filled in
+        # is never silently replaced by a fresh blank one — and so the run fails
+        # before writing anything rather than half way through. If the second
+        # claim fails, the first is released again: an abandoned empty file
+        # would make the next run fail for the wrong reason.
+        try:
+            for target in (xlsx_target, pdf_target):
+                reserve_new_file(target)
+                claimed.append(target)
+        except BaseException:
+            for target in claimed:
+                target.unlink(missing_ok=True)
+            raise
     try:
         written = write_month_sheet(
             layout,
-            target,
+            xlsx_target,
+            include_rate=args.include_rate,
+            hourly_rate=record["hourly_rate"],
+            currency=record["currency"],
+        )
+        write_month_pdf(
+            layout,
+            pdf_target,
             include_rate=args.include_rate,
             hourly_rate=record["hourly_rate"],
             currency=record["currency"],
         )
     except BaseException:
-        if not args.force:
-            target.unlink(missing_ok=True)  # drop the empty claim
+        for target in claimed:
+            target.unlink(missing_ok=True)  # drop the empty claims
         raise
 
     warnings = list(data_dir.warnings)
@@ -173,7 +195,7 @@ def cmd_generate(args: argparse.Namespace) -> dict[str, Any]:
         "worker": {"id": layout.worker_id, "display_name": layout.display_name},
         "month": layout.month,
         "month_title": layout.title,
-        "files": {"xlsx": written["path"]},
+        "files": {"xlsx": written["path"], "pdf": str(pdf_target)},
         "days": written["rows"],
         "working_days": written["working_days"],
         "off_days": written["off_days"],
@@ -320,6 +342,25 @@ def cmd_confirm(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def cmd_tally(args: argparse.Namespace) -> dict[str, Any]:
+    data_dir = _data_dir(args)
+    result = generate_tally(
+        data_dir,
+        worker_id=args.worker,
+        month=args.month,
+        template=args.template,
+        # Without --force every output file is claimed first, so an existing
+        # tally is reported instead of quietly replaced.
+        reserve=None if args.force else reserve_new_file,
+    )
+    return {
+        "command": "tally",
+        **result,
+        "data_dir": str(data_dir.path),
+        "warnings": data_dir.warnings + result["notes"],
+    }
+
+
 def cmd_export_data(args: argparse.Namespace) -> dict[str, Any]:
     data_dir = _data_dir(args)
     bundle = reg.export_bundle(data_dir)
@@ -386,9 +427,10 @@ def _render_human(payload: dict[str, Any]) -> str:
             )
     elif command == "generate":
         lines.append(
-            f"Wrote the timesheet for {payload['worker']['display_name']} "
-            f"({payload['month_title']}) to {payload['files']['xlsx']}."
+            f"Wrote the timesheet for {payload['worker']['display_name']} ({payload['month_title']})."
         )
+        lines.append(f"  Excel: {payload['files']['xlsx']}")
+        lines.append(f"  PDF:   {payload['files']['pdf']}")
         lines.append(
             f"  {payload['days']} days — {payload['working_days']} working, {payload['off_days']} off."
         )
@@ -412,6 +454,16 @@ def _render_human(payload: dict[str, Any]) -> str:
             f"({payload['month_title']})."
         )
         lines.append(f"  {payload['receipt']['statement']}")
+    elif command == "tally":
+        lines.append(
+            f"Final tally for {payload['worker']['display_name']} ({payload['month_title']}), "
+            f"generated {payload['generation_date']}."
+        )
+        lines.append(f"  {payload['calculation']}")
+        lines.append(f"  PDF:   {payload['files']['pdf']}")
+        lines.append(f"  Excel: {payload['files']['xlsx']} (template: {payload['template']['source']})")
+        if payload["files"]["templated_pdf"]:
+            lines.append(f"  PDF from the template: {payload['files']['templated_pdf']}")
     elif command == "export-data":
         lines.append(f"Wrote {payload['worker_count']} worker(s) to {payload['path']}.")
     elif command == "import-data":
@@ -536,6 +588,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_common(confirm)
     confirm.set_defaults(func=cmd_confirm)
+
+    tally = subparsers.add_parser(
+        "tally", help="Produce the final tally documents for a confirmed month."
+    )
+    tally.add_argument("--worker", required=True, help="Registered worker ID.")
+    tally.add_argument("--month", required=True, help="Confirmed month, e.g. '2026-08'.")
+    tally.add_argument(
+        "--template",
+        metavar="PATH",
+        help="XLSX template for the tally (default: templates/tally.xlsx in the data folder, "
+        "otherwise the built-in one).",
+    )
+    tally.add_argument("--force", action="store_true", help="Replace existing tally documents.")
+    add_common(tally)
+    tally.set_defaults(func=cmd_tally)
 
     export = subparsers.add_parser(
         "export-data", help="Write a portable bundle of the worker registry (no photos, no sessions)."

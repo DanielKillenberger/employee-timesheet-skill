@@ -68,11 +68,38 @@ direction), open the file, and check:
       or `@` shows as text; the spreadsheet does not try to evaluate it.
 - [ ] **German throughout.** Weekday abbreviations, month name, and all labels.
 
+## Eyeball checklist — final tally
+
+Run before shipping a change to the tally renderer or the template filler.
+Confirm a representative month, generate the tally, and check the built-in PDF
+and the filled template XLSX:
+
+- [ ] **Header block.** Worker name, month in German long form, generation date.
+- [ ] **All dates present.** Every calendar date once, ascending; days with no
+      hours show `0`, not a blank.
+- [ ] **Greys agree with the sheet.** The same rows are grey here as on the
+      monthly sheet for that worker and month, overrides included.
+- [ ] **Totals agree.** The table's total row, the `Total Stunden` summary line
+      and the calculation line all state the same number.
+- [ ] **Transparent arithmetic.** `hours × rate = gross`, and when rounding
+      changed the number the unrounded amount is shown next to it.
+- [ ] **No rounding in the presentation.** A four-decimal rate prints with all
+      four decimals in both documents.
+- [ ] **Disclaimer present.** Gross pay is stated as hours × rate with no
+      deductions implied.
+- [ ] **One page.** No stray second page carrying the summary block alone.
+- [ ] **Template rows intact.** In the filled XLSX the cloned day rows keep the
+      marker row's borders, and whatever sits below the marker (total line,
+      merged footer) has moved down with its formatting.
+- [ ] **German throughout.**
+
 ## QA record
 
 | Date       | Build   | Sample                                                             | Viewed with                                                | Result |
 | ---------- | ------- | ------------------------------------------------------------------ | ---------------------------------------------------------- | ------ |
 | 2026-08-13 | task .2 | `anna` / `2027-03` (31 days, `off 2027-03-02`, `extra 2027-03-06`) | `tools/render_xlsx_preview.py` → A4 PDF → PNG, viewed as an image | pass   |
+| 2026-08-13 | task .4 | sheet PDF, `anna` / `2027-03` (31 days, both overrides)            | generated PDF → PNG, viewed as an image                            | pass   |
+| 2026-08-13 | task .4 | tally PDF + filled template XLSX, same worker/month, rate `7.3333` | PDF → PNG; XLSX via `tools/render_xlsx_preview.py` → PNG           | pass   |
 
 Reproduce with:
 
@@ -106,6 +133,45 @@ What was additionally checked on the file read back with openpyxl:
   It therefore fits one page at 100 % scale; `fitToPage` is a safety net rather
   than the thing being relied on. **This is the early proof point: one-page A4
   fit is reliable, so the PDF renderer can share the layout model.**
+
+### Task .4 — sheet PDF and final tally (2026-08-13)
+
+Same worker and month as above, plus a `7.3333` hourly rate so the rounding
+disclosure had something to disclose. Reproduce with:
+
+```bash
+uv run scripts/timesheet.py generate --worker anna --month 2027-03
+uv run scripts/timesheet.py tally    --worker anna --month 2027-03
+```
+
+**Sheet PDF** (`anna-2027-03.pdf`), seen on the rendered page: one portrait A4
+page; title, the two identity lines and the three column headers legible; 31 day
+rows from `Mo, 01.03.2027` to `Mi, 31.03.2027`, each once, in order; grey rows on
+`Di, 02.03.` (override day off) and every weekend **except** `Sa, 06.03.`
+(override working day) — the greys are identical to the XLSX sheet's, which is
+the point of the shared layout model; hours and remark cells empty throughout;
+`Total Stunden` as the last row. Nothing clipped, no second page.
+
+**Tally PDF** (`anna-2027-03-abrechnung.pdf`): one portrait A4 page; header
+block with name, `März 2027` and the generation date; all 31 dates with their
+confirmed hours (`7.25` on working days, `0` on off days) and the same grey
+rows; total row `166.75`; summary block `Total Stunden 166.75 h`,
+`Stundenlohn 7.3333 CHF`, `Bruttolohn 1222.83 CHF`, and the calculation line
+`166.75 h × 7.3333 CHF = 1222.83 CHF (exakt 1222.827775 CHF, kaufmännisch auf
+0.01 gerundet)` — the unrounded product is on the page, so the employee can redo
+the arithmetic. Disclaimer at the foot in small grey type.
+
+**Filled template XLSX** (`anna-2027-03-abrechnung.xlsx`, bundled default
+template), rendered with `tools/render_xlsx_preview.py`: 31 cloned day rows, each
+carrying the marker row's borders; the `Total Stunden` line and the merged
+disclaimer that sit *below* the marker moved down intact; `Stundenlohn 7.3333`
+shown with all four decimals (the two-decimal cell format is applied only to the
+gross pay, which is quantized to 0.01 by construction, so no digit can be hidden);
+fits one portrait A4 page at 100 %.
+
+No LibreOffice was installed in the build environment, so the optional templated
+PDF was not produced — the run reported that in plain language and the mandatory
+built-in PDF was unaffected, which is exactly the contract in R6.
 
 **Limitation, stated plainly:** no spreadsheet application (Excel, LibreOffice)
 was installed in the build environment, so the page above was rendered by
