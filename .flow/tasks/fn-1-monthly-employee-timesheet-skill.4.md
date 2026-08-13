@@ -38,9 +38,8 @@ PDF sheet renderer, final tally generation (`tally`), and the tally template sup
 - [ ] .gitignore exception verified
 - [ ] Eyeball evidence recorded
 ## Done summary
-TBD
-
+Monthly sheet PDF renderer (`lib/pdf_sheet.py`) sharing the task-2 layout model, so the XLSX and PDF can never disagree about dates or grey rows — one portrait A4 page asserted with pypdf for every month length, and Unicode text that either prints the employee's name correctly or refuses rather than drawing black boxes. Final tally (`lib/tally.py`): the built-in German PDF is produced unconditionally and converter-free from the frozen confirmation snapshot only, refuses any unconfirmed session (AC9), and re-derives the day set, total and pay receipt from the stored per-day hours so a hand-edited session can never dictate a payroll number or a path. A tally template (`{{...}}` placeholders plus a cloned `{{day_rows}}` marker row, resolved `--template` > data dir > bundled default, print areas and merges following the inserted rows) additionally yields a filled XLSX and, where LibreOffice exists, a separately named templated PDF; a missing placeholder, duplicate marker or unreadable file is a specific error, never a silent fallback (AC10). Sheet and tally documents were eyeballed against the checklist in `references/reference-layout.md`; placeholder contract documented in `references/templates.md`; the bundled default template is tracked despite the global `*.xlsx` ignore.
 ## Evidence
-- Commits:
-- Tests:
+- Commits: b34053b90f0155c59a10eb6af27882c9e70bf5ee, 9883dfbe3beb3b6efc15ee61350fddc499cfa364, 81c85f4e580656f00bd5c329eb68af943dafa771, 7fc3d7dc39f9d716f6cbebe075aed396157d9d90
+- Tests: uv run pytest (405 passed, 77 new for this task), uv run scripts/timesheet.py --help, .flow/bin/flowctl validate --all --json (0 errors), codex impl-review: SHIP after 3 fix rounds (7 findings, all fixed) - /tmp/impl-review-receipt-fn-1-monthly-employee-timesheet-skill.4.json
 - PRs:
