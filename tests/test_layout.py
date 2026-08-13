@@ -180,7 +180,10 @@ def test_unknown_weekday_in_a_record_is_refused() -> None:
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("month", ["2027-13", "2027-00", "27-03", "2027/03", "2027-3", "", "März"])
+@pytest.mark.parametrize(
+    "month",
+    ["2027-13", "2027-00", "27-03", "2027/03", "2027-3", "", "März", "0000-01"],
+)
 def test_invalid_months_are_refused(month: str) -> None:
     with pytest.raises(TimesheetError) as excinfo:
         validate_month(month)

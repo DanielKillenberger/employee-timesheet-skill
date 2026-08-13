@@ -46,6 +46,20 @@ DEFAULT_CURRENCY = "CHF"
 
 MAX_NAME_LENGTH = 120
 
+# Control characters cannot be stored in a spreadsheet cell (XML forbids them),
+# so they are refused at the door instead of blowing up in the renderer.
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def _reject_control_characters(value: str, *, code: str, subject: str) -> None:
+    if _CONTROL_CHARS_RE.search(value):
+        raise TimesheetError(
+            code,
+            f"{subject} contains invisible control characters, which cannot be written to a "
+            "timesheet. Please retype it as plain text.",
+            {"value": repr(value)},
+        )
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -79,6 +93,7 @@ def validate_display_name(raw: object) -> str:
             f"The worker's name is too long (maximum {MAX_NAME_LENGTH} characters).",
             {"length": len(name)},
         )
+    _reject_control_characters(name, code="invalid_name", subject="The worker's name")
     return name
 
 
@@ -95,6 +110,7 @@ def validate_currency(raw: object | None) -> str:
     label = raw.strip()
     if not label:
         raise TimesheetError("invalid_currency", "The currency label must not be empty.", {"value": raw})
+    _reject_control_characters(label, code="invalid_currency", subject="The currency label")
     return label
 
 

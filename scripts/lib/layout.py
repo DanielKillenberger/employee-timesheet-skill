@@ -63,14 +63,19 @@ SOURCE_OVERRIDE_EXTRA = "override_extra"
 
 
 def validate_month(raw: object) -> str:
-    """Validate a ``YYYY-MM`` month string."""
-    if not isinstance(raw, str) or _MONTH_RE.fullmatch(raw.strip()) is None:
+    """Validate a ``YYYY-MM`` month string.
+
+    Year ``0000`` matches the digit shape but has no calendar — ``date(0, …)``
+    raises — so it is rejected here rather than crashing the renderer later.
+    """
+    candidate = raw.strip() if isinstance(raw, str) else raw
+    if not isinstance(candidate, str) or _MONTH_RE.fullmatch(candidate) is None or candidate[:4] == "0000":
         raise TimesheetError(
             "invalid_month",
             f"'{raw}' is not a valid month. Use the form YYYY-MM, for example '2026-08'.",
             {"value": raw},
         )
-    return raw.strip()
+    return candidate
 
 
 def split_month(month: str) -> tuple[int, int]:

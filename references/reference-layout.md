@@ -67,3 +67,31 @@ direction), open the file, and check:
 - [ ] **Literal names.** A name or currency label starting with `=`, `+`, `-`
       or `@` shows as text; the spreadsheet does not try to evaluate it.
 - [ ] **German throughout.** Weekday abbreviations, month name, and all labels.
+
+## QA record
+
+| Date       | Build  | Sample                                                      | Result |
+| ---------- | ------ | ----------------------------------------------------------- | ------ |
+| 2026-08-13 | task .2 | `anna` / `2027-03` (31 days, `off 2027-03-02`, `extra 2027-03-06`) | pass, with the limitation noted below |
+
+What was inspected, on the file actually written to disk and read back:
+
+- 31 day rows, `Mo, 01.03.2027` through `Mi, 31.03.2027`, each date once, in order.
+- Grey rows: `02.03.` (override day off, a Tuesday) plus the seven remaining
+  weekend days; `Sa, 06.03.` correctly **not** grey (override working day).
+- Hour cells empty on every day; total row `Total Stunden` / `=SUM(B6:B36)`
+  spanning exactly the 31 day rows.
+- German labels throughout, longest date label 14 characters against a
+  18-character date column — no clipping.
+- Page geometry: the table occupies ≈4.8 × 7.7 in, inside the ≈7.3 × 10.7 in
+  printable area of portrait A4 at 0.5 in margins, with no manual page breaks.
+  It therefore fits one page at 100 % scale; `fitToPage` is a safety net rather
+  than the thing being relied on. **This is the early proof point: one-page A4
+  fit is reliable, so the PDF renderer can share the layout model.**
+
+**Limitation, stated plainly:** no spreadsheet application (Excel, LibreOffice)
+was available in the build environment, so this pass inspected the parsed
+workbook and computed print geometry rather than an on-screen print preview.
+The visual print-preview check is carried by the PDF sheet in task `.4` and by
+the fresh-install walkthrough (AC11), where a rendered document exists to look
+at. Anyone with Excel to hand should still run the checklist above once.

@@ -24,9 +24,12 @@ from typing import Any
 from openpyxl import Workbook
 from openpyxl.cell.cell import TYPE_STRING, Cell
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils.exceptions import IllegalCharacterError
 from openpyxl.worksheet.properties import PageSetupProperties
 from openpyxl.worksheet.worksheet import Worksheet
 
+from .datadir import atomic_output_file
+from .errors import TimesheetError
 from .layout import MonthLayout
 
 SHEET_TITLE = "Stundenrapport"
@@ -65,7 +68,18 @@ def _text(cell: Cell, value: object) -> Cell:
     if text == "":
         cell.value = None
         return cell
-    cell.value = text
+    try:
+        cell.value = text
+    except IllegalCharacterError as exc:
+        # A spreadsheet cannot hold control characters. Registration rejects
+        # them, so this is the belt for anything that reached storage another
+        # way — a plain message beats an openpyxl traceback.
+        raise TimesheetError(
+            "unwritable_text",
+            "A value contains characters that a spreadsheet cannot store "
+            "(invisible control characters). Please register the worker again with plain text.",
+            {"cell": cell.coordinate},
+        ) from exc
     cell.data_type = TYPE_STRING
     if text[:1] in ("=", "+", "-", "@"):
         cell.quotePrefix = True
@@ -189,7 +203,10 @@ def write_month_sheet(
         hourly_rate=hourly_rate,
         currency=currency,
     )
-    workbook.save(str(path))
+    # Write beside the target and rename: a half-written save must never replace
+    # a sheet somebody already filled in, and the file stays owner-only.
+    with atomic_output_file(path, suffix=".xlsx") as tmp_path:
+        workbook.save(str(tmp_path))
     return {
         "path": str(path),
         "rows": len(layout.rows),

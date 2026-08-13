@@ -296,6 +296,37 @@ def write_json_atomic(path: Path, payload: Any) -> None:
         raise
 
 
+@contextmanager
+def atomic_output_file(path: Path, *, suffix: str = "") -> Iterator[Path]:
+    """Yield a temp path next to ``path``; replace ``path`` with it on success.
+
+    Generated documents get the same treatment as the registry: a writer that
+    truncates its destination first (openpyxl's ``save()`` does) can destroy an
+    already-filled-in sheet if the process dies mid-write. Writing beside the
+    target and renaming makes the replacement all-or-nothing, and the temp file
+    is created owner-only so the finished document never depends on the umask.
+    """
+    if not path.parent.is_dir():
+        raise TimesheetError(
+            "output_dir_missing",
+            f"The folder '{path.parent}' does not exist, so '{path.name}' could not be written.",
+            {"path": str(path)},
+        )
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=suffix)
+    os.close(fd)
+    tmp_path = Path(tmp_name)
+    try:
+        try:
+            os.chmod(tmp_path, FILE_MODE)
+        except (NotImplementedError, OSError):  # pragma: no cover
+            pass
+        yield tmp_path
+        os.replace(tmp_path, path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
 def read_json(path: Path) -> Any:
     try:
         with path.open("r", encoding="utf-8") as handle:

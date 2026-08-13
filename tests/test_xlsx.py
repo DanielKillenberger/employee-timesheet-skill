@@ -13,6 +13,7 @@ from openpyxl import load_workbook
 import timesheet
 from lib import registry as reg
 from lib.datadir import resolve_data_dir
+from lib.errors import TimesheetError
 from lib.layout import build_month_layout
 from lib.xlsx_sheet import COLUMN_HEADERS, LABEL_RATE, LABEL_TOTAL, build_workbook, write_month_sheet
 
@@ -296,6 +297,69 @@ def test_generate_warns_when_the_month_has_no_working_day(data_dir) -> None:
     assert code == 0
     assert payload["working_days"] == 0
     assert any("no working days" in warning for warning in payload["warnings"])
+
+
+def test_generated_file_is_owner_only_even_with_force(data_dir) -> None:
+    register_anna(data_dir)
+    code, payload, _ = run_cli(
+        ["generate", "--worker", "anna", "--month", "2027-03", "--force"], data_dir
+    )
+    assert code == 0
+    mode = Path(payload["files"]["xlsx"]).stat().st_mode & 0o777
+    assert mode == 0o600
+
+
+def test_a_failed_regeneration_leaves_the_existing_sheet_intact(data_dir, monkeypatch) -> None:
+    register_anna(data_dir)
+    layout = build_month_layout(reg.get_worker(data_dir, "anna"), "2027-03")
+    target = data_dir.output_dir / "anna-2027-03.xlsx"
+    write_month_sheet(layout, target)
+    original = target.read_bytes()
+
+    class Boom(RuntimeError):
+        pass
+
+    def explode(self, filename):  # noqa: ANN001
+        Path(filename).write_bytes(b"half-written")
+        raise Boom("disk full")
+
+    monkeypatch.setattr("openpyxl.workbook.workbook.Workbook.save", explode)
+    with pytest.raises(Boom):
+        write_month_sheet(layout, target)
+
+    assert target.read_bytes() == original
+    leftovers = [path.name for path in target.parent.iterdir() if path.name.startswith(".tmp-")]
+    assert leftovers == []
+
+
+def test_control_characters_are_refused_at_registration(data_dir) -> None:
+    for field, code in (("display_name", "invalid_name"), ("currency", "invalid_currency")):
+        with pytest.raises(TimesheetError) as excinfo:
+            reg.register_worker(
+                data_dir,
+                worker_id="ctrl",
+                display_name="Anna\x07Muster" if field == "display_name" else "Anna",
+                weekdays="mon",
+                rate="7.50",
+                currency="CH\x01F" if field == "currency" else None,
+            )
+        assert excinfo.value.code == code
+
+
+def test_a_control_character_that_reached_storage_yields_a_plain_error(tmp_path: Path) -> None:
+    record = worker(display_name="Anna\x07Muster")
+    layout = build_month_layout(record, "2027-03")
+    with pytest.raises(TimesheetError) as excinfo:
+        write_month_sheet(layout, tmp_path / "sheet.xlsx")
+    assert excinfo.value.code == "unwritable_text"
+
+
+def test_year_zero_is_refused_by_the_cli_with_a_structured_error(data_dir) -> None:
+    register_anna(data_dir)
+    code, payload, stderr = run_cli(["generate", "--worker", "anna", "--month", "0000-01"], data_dir)
+    assert code != 0
+    assert payload["code"] == "invalid_month"
+    assert "Traceback" not in stderr
 
 
 def test_generate_include_rate_flag_reaches_the_sheet(data_dir) -> None:
