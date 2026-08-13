@@ -16,7 +16,7 @@ This repository is governed by Flow Next. The approved specification is the sour
 ## Quality route
 
 - Builder: Claude Opus 5, medium effort.
-- Independent reviewer: Codex/Sol.
+- Independent reviewer: Codex/Sol, high effort (plan and implementation reviews).
 - Preserve honest test failures and inspect generated PDF/XLSX artifacts visually.
 
 <!-- BEGIN FLOW-NEXT -->

@@ -1,0 +1,17 @@
+{
+  "assignee": null,
+  "claim_note": "",
+  "claimed_at": null,
+  "created_at": "2026-08-13T18:24:53.132040Z",
+  "depends_on": [
+    "fn-1-monthly-employee-timesheet-skill.3",
+    "fn-1-monthly-employee-timesheet-skill.4"
+  ],
+  "id": "fn-1-monthly-employee-timesheet-skill.6",
+  "priority": null,
+  "spec": "fn-1-monthly-employee-timesheet-skill",
+  "spec_path": ".flow/tasks/fn-1-monthly-employee-timesheet-skill.6.md",
+  "status": "todo",
+  "title": "SKILL.md, packaging, README + finalization",
+  "updated_at": "2026-08-13T19:01:11.494832Z"
+}

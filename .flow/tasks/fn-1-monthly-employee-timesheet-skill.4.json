@@ -1,0 +1,17 @@
+{
+  "assignee": null,
+  "claim_note": "",
+  "claimed_at": null,
+  "created_at": "2026-08-13T18:24:52.611705Z",
+  "depends_on": [
+    "fn-1-monthly-employee-timesheet-skill.2",
+    "fn-1-monthly-employee-timesheet-skill.3"
+  ],
+  "id": "fn-1-monthly-employee-timesheet-skill.4",
+  "priority": null,
+  "spec": "fn-1-monthly-employee-timesheet-skill",
+  "spec_path": ".flow/tasks/fn-1-monthly-employee-timesheet-skill.4.md",
+  "status": "todo",
+  "title": "PDF rendering: monthly sheet + final tally",
+  "updated_at": "2026-08-13T18:59:12.566504Z"
+}

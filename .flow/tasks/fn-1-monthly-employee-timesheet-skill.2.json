@@ -1,0 +1,16 @@
+{
+  "assignee": null,
+  "claim_note": "",
+  "claimed_at": null,
+  "created_at": "2026-08-13T18:24:52.091354Z",
+  "depends_on": [
+    "fn-1-monthly-employee-timesheet-skill.1"
+  ],
+  "id": "fn-1-monthly-employee-timesheet-skill.2",
+  "priority": null,
+  "spec": "fn-1-monthly-employee-timesheet-skill",
+  "spec_path": ".flow/tasks/fn-1-monthly-employee-timesheet-skill.2.md",
+  "status": "todo",
+  "title": "Month layout model + XLSX generation",
+  "updated_at": "2026-08-13T18:59:11.962482Z"
+}
