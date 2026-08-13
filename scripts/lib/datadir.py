@@ -356,8 +356,16 @@ def atomic_output_files(paths: "list[Path]") -> Iterator[list[Path]]:
     Every document is rendered to a temp file next to its target first; only
     when they have all been rendered are the targets replaced. A failure at any
     point removes the temp files and leaves every target exactly as it was.
+
+    The final renames are individually atomic but not collectively so — the
+    second one can still fail (a target turned into a directory, a permission
+    change, a full disk). Each replaced file is therefore kept as a backup
+    until the whole set has landed, and a failure part way through puts the
+    earlier targets back the way they were.
     """
     staged: list[tuple[Path, Path]] = []
+    replaced: list[tuple[Path, Path | None]] = []
+    backups: list[Path] = []
     try:
         for path in paths:
             if not path.parent.is_dir():
@@ -378,8 +386,34 @@ def atomic_output_files(paths: "list[Path]") -> Iterator[list[Path]]:
         yield [tmp for _, tmp in staged]
 
         for path, tmp_path in staged:
+            backup: Path | None = None
+            if path.exists():
+                fd, backup_name = tempfile.mkstemp(
+                    dir=str(path.parent), prefix=".bak-", suffix=path.suffix
+                )
+                os.close(fd)
+                backup = Path(backup_name)
+                backups.append(backup)
+                os.replace(path, backup)
             os.replace(tmp_path, path)
+            replaced.append((path, backup))
+
+        for backup in backups:
+            backup.unlink(missing_ok=True)
     except BaseException:
+        # Undo the publications that already landed, newest first.
+        for path, backup in reversed(replaced):
+            try:
+                if backup is not None:
+                    os.replace(backup, path)
+                else:
+                    path.unlink(missing_ok=True)
+            except OSError:  # pragma: no cover - nothing better to try
+                pass
+        for backup in backups:
+            # Includes the placeholder of a target whose own backup rename
+            # failed, which never made it into `replaced`.
+            backup.unlink(missing_ok=True)
         for _, tmp_path in staged:
             tmp_path.unlink(missing_ok=True)
         raise

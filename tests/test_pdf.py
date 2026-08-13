@@ -317,3 +317,58 @@ def test_a_maximum_length_name_and_currency_still_fit_one_page(tmp_path: Path) -
         currency="C" * MAX_CURRENCY_LENGTH,
     )
     assert len(PdfReader(str(path)).pages) == 1
+
+
+# --------------------------------------------------------------------------
+# atomic_output_files — all or nothing, including during publication
+# --------------------------------------------------------------------------
+
+
+def test_a_failed_second_rename_puts_the_first_target_back(tmp_path: Path) -> None:
+    """Publishing is a sequence of renames; a failure half way must not split the set."""
+    from lib.datadir import atomic_output_files
+
+    first = tmp_path / "one.pdf"
+    first.write_bytes(b"old one")
+    second = tmp_path / "two.xlsx"
+    second.mkdir()  # a directory here makes the second rename fail
+
+    with pytest.raises(OSError):
+        with atomic_output_files([first, second]) as (staged_first, staged_second):
+            staged_first.write_bytes(b"new one")
+            staged_second.write_bytes(b"new two")
+
+    assert first.read_bytes() == b"old one", "the first document was published on its own"
+    assert second.is_dir()
+    leftovers = [item.name for item in tmp_path.iterdir() if item.name.startswith(".")]
+    assert leftovers == [], f"temporary files left behind: {leftovers}"
+
+
+def test_a_failed_second_rename_removes_a_first_target_that_was_new(tmp_path: Path) -> None:
+    from lib.datadir import atomic_output_files
+
+    first = tmp_path / "one.pdf"  # does not exist yet
+    second = tmp_path / "two.xlsx"
+    second.mkdir()
+
+    with pytest.raises(OSError):
+        with atomic_output_files([first, second]) as (staged_first, staged_second):
+            staged_first.write_bytes(b"new one")
+            staged_second.write_bytes(b"new two")
+
+    assert not first.exists(), "a half-published set left a new file behind"
+
+
+def test_publishing_a_full_set_leaves_no_backups(tmp_path: Path) -> None:
+    from lib.datadir import atomic_output_files
+
+    first, second = tmp_path / "one.pdf", tmp_path / "two.xlsx"
+    first.write_bytes(b"old one")
+
+    with atomic_output_files([first, second]) as (staged_first, staged_second):
+        staged_first.write_bytes(b"new one")
+        staged_second.write_bytes(b"new two")
+
+    assert first.read_bytes() == b"new one"
+    assert second.read_bytes() == b"new two"
+    assert [item.name for item in tmp_path.iterdir() if item.name.startswith(".")] == []
