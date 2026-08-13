@@ -28,12 +28,15 @@ SKILL.md, packaging, README rewrite, and the fresh-install usability walkthrough
 - [x] Packaging produces valid ZIP; tests enforce layout + exclusions + template presence (AC7)
 - [x] README install guide self-contained with exact click paths (AC8)
 - [x] SKILL.md within limits; documents workflows, confirmation gate, name-check, data-location guidance
-- [x] Fresh-install walkthrough performed and evidenced; frictions fixed (AC11)
+- [ ] Fresh-install walkthrough performed and evidenced; frictions fixed (AC11)
+      — everything below the claude.ai upload is done and evidenced; the upload
+      + one conversational pass need a signed-in human (see the checklist at
+      the end of the walkthrough record)
 - [x] CLAUDE.md state refreshed
 ## Acceptance
 - [x] AC7/AC8 coverage
 - [x] ZIP inspected by tests
-- [x] AC11 walkthrough evidence recorded
+- [x] AC11 walkthrough evidence recorded (partial — Claude-surface step pending)
 
 ## AC11 fresh-install walkthrough (performed 2026-08-13)
 
