@@ -395,8 +395,11 @@ def atomic_output_files(paths: "list[Path]") -> Iterator[list[Path]]:
                 backup = Path(backup_name)
                 backups.append(backup)
                 os.replace(path, backup)
-            os.replace(tmp_path, path)
+            # Restorable from the moment the original moves aside, NOT after
+            # the staged file lands: a failure in between would otherwise leave
+            # the original sitting in a backup that the cleanup then deletes.
             replaced.append((path, backup))
+            os.replace(tmp_path, path)
 
         for backup in backups:
             backup.unlink(missing_ok=True)

@@ -9,6 +9,7 @@ silent second page nobody notices until it is printed. pypdf catches it here.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -371,4 +372,39 @@ def test_publishing_a_full_set_leaves_no_backups(tmp_path: Path) -> None:
 
     assert first.read_bytes() == b"new one"
     assert second.read_bytes() == b"new two"
+    assert [item.name for item in tmp_path.iterdir() if item.name.startswith(".")] == []
+
+
+def test_a_failed_publish_after_the_backup_move_restores_the_original(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Fault injection between "original moved aside" and "replacement lands".
+
+    That window is where a two-step publish can destroy a document outright:
+    the original is no longer at its own path, and the new one never arrived.
+    """
+    from lib import datadir
+
+    first, second = tmp_path / "one.pdf", tmp_path / "two.xlsx"
+    first.write_bytes(b"old one")
+    second.write_bytes(b"old two")
+
+    real_replace = os.replace
+
+    def flaky_replace(src, dst):
+        # Fail only the second document's staged -> target rename, after its
+        # original has already been moved to a backup.
+        if Path(dst) == second and Path(src).name.startswith(".tmp-"):
+            raise OSError("injected failure while publishing")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(datadir.os, "replace", flaky_replace)
+
+    with pytest.raises(OSError):
+        with datadir.atomic_output_files([first, second]) as (staged_first, staged_second):
+            staged_first.write_bytes(b"new one")
+            staged_second.write_bytes(b"new two")
+
+    assert first.read_bytes() == b"old one"
+    assert second.read_bytes() == b"old two", "the original was destroyed, not restored"
     assert [item.name for item in tmp_path.iterdir() if item.name.startswith(".")] == []
