@@ -1,7 +1,13 @@
 {
   "next_spec": 1,
   "schema_version": 3,
-  "setup_mode": "copy",
-  "setup_version": "3.13.3",
-  "setup_date": "2026-08-13"
+  "setup": {
+    "block_hashes": {
+      "CLAUDE.md": {
+        "FLOW-NEXT": "6ab083759deb8e68da8e7ceab2fa44d5a3e4f97e4e2e5fe8879e07a1b57b4884"
+      }
+    }
+  },
+  "setup_date": "2026-08-17",
+  "setup_version": "4.0.0"
 }
