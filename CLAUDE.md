@@ -24,14 +24,14 @@ This repository is governed by Flow Next. The approved specification is the sour
 <!-- BEGIN FLOW-NEXT -->
 ## Flow-Next
 
-This project uses Flow-Next. Use `.flow/bin/flowctl` for ALL task tracking. Re-anchor by reading the spec and task status before every task.
+This project uses Flow-Next. Use `flowctl` for ALL task tracking. Re-anchor by reading the spec and task status before every task.
 
 ```bash
-.flow/bin/flowctl list
-.flow/bin/flowctl show fn-N.M
-.flow/bin/flowctl start fn-N.M
-.flow/bin/flowctl done fn-N.M --summary-file summary.md --evidence-json evidence.json
+flowctl list
+flowctl show fn-N.M
+flowctl start fn-N.M
+flowctl done fn-N.M --summary-file summary.md --evidence-json evidence.json
 ```
 
-Creating a spec: write it directly, then use `/flow-next:plan <spec-id>` for task breakdown. More: `.flow/bin/flowctl --help` or `.flow/usage.md`.
+Creating a spec: write it directly, then use `/flow-next:plan <spec-id>` for task breakdown. More: `flowctl --help` or `flowctl usage`.
 <!-- END FLOW-NEXT -->
